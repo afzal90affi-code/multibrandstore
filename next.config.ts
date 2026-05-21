@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  reactCompiler: true,
-  reactStrictMode: true,
+  reactCompiler: false,
+  pageExtensions: ['ts', 'tsx', 'js', 'jsx'], // ✅ Yeh line Next.js ko pages folder dikhayegi
 };
 
 export default nextConfig;
