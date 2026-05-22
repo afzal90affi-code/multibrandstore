@@ -6,10 +6,11 @@ import Head from "next/head";
 import Link from "next/link";
 import { db } from "../../lib/firebase";
 import { collection, onSnapshot } from "firebase/firestore";
-import { ArrowLeft, Search, Heart, ShoppingCart, MessageCircle } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Search, Heart, MessageCircle, Menu, X } from "lucide-react"; // ✅ Menu aur X add kiye
 import { useCart } from "../_app";
+import { motion, AnimatePresence } from "framer-motion"; // ✅ Mobile menu ke liye
 
-const WA = "923222806245"; // ⚠️ APNA WHATSAPP NUMBER
+const WA = "923333010842"; // ⚠️ APNA WHATSAPP NUMBER
 const LOGO_URL = "/logo.png";
 const SITE_URL = "https://yourdomain.com"; // ⚠️ APNI DOMAIN LINK
 
@@ -19,6 +20,17 @@ export default function CategoryPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { addToCart, totalItems } = useCart();
+  
+  const [menuOpen, setMenuOpen] = useState(false); // ✅ Mobile Menu State
+  const [cats, setCats] = useState<any[]>([]); // ✅ Categories fetch karne ke liye
+
+  // ✅ Fetch Categories for Mobile Menu
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "categories"), (snap) => {
+      setCats(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((c: any) => c.active !== false));
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     if (!categoryName) return;
@@ -46,28 +58,66 @@ export default function CategoryPage() {
         <link rel="canonical" href={`${SITE_URL}/category/${categoryName}`} />
       </Head>
 
-      {/* ━━━ NAVBAR (Same as Product Page) ━━━ */}
+      {/* ━━━ NAVBAR (3 Lines - Logo - Basket) ━━━ */}
       <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
-          <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2"><img src={LOGO_URL} alt="MultiBrand Logo" className="h-34 w-auto" /></Link>
+          
+          {/* Left: 3 Lines (Mobile) / Links (Desktop) */}
+          <div className="flex items-center gap-4 z-10">
+            <button onClick={() => setMenuOpen(true)} className="md:hidden text-gray-800"><Menu size={24} /></button>
             <div className="hidden md:flex items-center gap-6">
               <Link href="/" className="text-[13px] font-semibold text-gray-700 hover:text-rose-600 uppercase tracking-wider">Home</Link>
               <a href="/#featured" className="text-[13px] font-semibold text-gray-700 hover:text-rose-600 uppercase tracking-wider">Products</a>
               <a href="/#categories" className="text-[13px] font-semibold text-gray-700 hover:text-rose-600 uppercase tracking-wider">Categories</a>
             </div>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <button className="hidden sm:flex w-9 h-9 items-center justify-center text-gray-700 hover:text-rose-600"><Search size={20} /></button>
-            <button className="hidden sm:flex w-9 h-9 items-center justify-center text-gray-700 hover:text-rose-600"><Heart size={20} /></button>
-            <Link href="/" className="relative w-9 h-9 flex items-center justify-center text-gray-700 hover:text-rose-600 transition-colors">
-              <ShoppingCart size={20} />
+
+          {/* Center: Logo */}
+          <div className="absolute left-1/2 transform -translate-x-1/2 md:relative md:left-0 md:transform-none flex items-center z-10">
+            <Link href="/" aria-label="MultiBrand Home"><img src={LOGO_URL} alt="MultiBrand Logo" className="h-34 md:h-34 w-auto" /></Link>
+          </div>
+
+          {/* Right: Basket / Cart */}
+          <div className="flex items-center gap-3 z-10">
+            <button className="hidden md:flex w-9 h-9 items-center justify-center text-gray-700 hover:text-rose-600"><Search size={20} /></button>
+            <button className="hidden md:flex w-9 h-9 items-center justify-center text-gray-700 hover:text-rose-600"><Heart size={20} /></button>
+            <Link href="/" className="relative w-9 h-9 flex items-center justify-center text-gray-700 hover:text-rose-600 transition-colors" aria-label="Cart">
+              <ShoppingCart size={22} />
               {totalItems > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{totalItems}</span>)}
             </Link>
           </div>
         </div>
       </nav>
+
+      {/* ━━━ MOBILE MENU (3 Lines Dropdown) ━━━ */}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} className="fixed inset-0 z-[60] flex" onClick={() => setMenuOpen(false)}>
+            <div className="w-72 bg-white h-full shadow-2xl p-6 relative" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setMenuOpen(false)} className="absolute top-4 right-4 text-gray-800"><X size={24} /></button>
+              <img src={LOGO_URL} alt="Logo" className="h-10 mb-8" />
+              <div className="space-y-4">
+                {/* Home Button inside 3 lines */}
+                <Link href="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 text-gray-800 font-semibold text-lg">
+                  <ArrowLeft size={18} /> Home
+                </Link>
+                <a href="/#featured" onClick={() => setMenuOpen(false)} className="block text-gray-800 font-semibold text-lg">New In</a>
+                
+                {/* Categories inside 3 lines */}
+                <div>
+                  <p className="text-gray-400 text-xs uppercase mb-2 font-bold tracking-wider">Collections</p>
+                  {cats.map((c: any) => (
+                    <Link key={c.id} href={`/category/${c.name}`} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 py-2 text-gray-800 font-medium capitalize">
+                      <span className="text-lg">{c.icon}</span> {c.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 bg-black/40" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ━━━ MAIN CONTENT ━━━ */}
       <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -91,7 +141,7 @@ export default function CategoryPage() {
               {products.map((p) => (
                 <div key={p.id} className="group">
                   <Link href={`/product/${p.id}`}>
-                    <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-gray-100 shadow-sm border border-gray-200">
+                    <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-[#F9F9F9] border border-gray-100">
                       <img 
                         src={p.image || p.image2 || "/"} 
                         alt={p.title || "Product"} 
@@ -102,7 +152,7 @@ export default function CategoryPage() {
                           <span className="bg-red-600 text-white text-[10px] font-extrabold px-3 py-1 rounded-full">SOLD OUT</span>
                         </div>
                       )}
-                      {/* Quick Add Button */}
+                      {/* Hover Add to Cart Button */}
                       <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300 z-20">
                         <button 
                           disabled={p.inStock === false} 
@@ -110,20 +160,21 @@ export default function CategoryPage() {
                             e.preventDefault(); 
                             addToCart({ id: p.id, title: p.title, price: Number(p.price), image: p.image, size: p.sizes?.[0] || "Free Size", quantity: 1 }); 
                           }} 
-                          className="w-full bg-gray-900 hover:bg-rose-700 text-white py-2.5 text-xs font-bold transition-colors disabled:bg-gray-400"
+                          className="w-full bg-gray-900 hover:bg-rose-700 text-white py-2.5 text-[11px] font-bold tracking-wider uppercase transition-colors disabled:bg-gray-400"
                         >
-                          {p.inStock === false ? "Out of Stock" : "ADD TO CART"}
+                          {p.inStock === false ? "Sold Out" : "Add to Cart"}
                         </button>
                       </div>
                     </div>
                   </Link>
-                  <div className="mt-3 text-center">
-                    <Link href={`/product/${p.id}`}><h4 className="text-sm font-medium text-gray-800 truncate group-hover:text-rose-600 transition-colors">{p.title || "Untitled"}</h4></Link>
-                    <p className="text-sm font-bold text-gray-900 mt-1">PKR {Number(p.price || 0).toLocaleString()}</p>
+                  {/* Khaadi Style Text */}
+                  <div className="mt-3 text-left">
+                    <Link href={`/product/${p.id}`}><h4 className="text-[13px] font-medium text-gray-800 truncate hover:text-rose-600 transition-colors">{p.title || "Untitled"}</h4></Link>
+                    <p className="text-sm font-bold text-gray-900 mt-0.5">PKR {Number(p.price || 0).toLocaleString()}</p>
                     {p.sizes && p.sizes.length > 0 && (
-                      <div className="flex gap-1 justify-center mt-1">
+                      <div className="flex gap-1.5 mt-1.5">
                         {p.sizes.map((size: string) => (
-                          <span key={size} className="px-1.5 py-0.5 border border-gray-300 text-gray-600 rounded text-[8px] font-semibold">{size}</span>
+                          <span key={size} className="text-[9px] text-gray-500 font-medium">{size}{p.sizes.indexOf(size) < p.sizes.length - 1 ? ' ·' : ''}</span>
                         ))}
                       </div>
                     )}
@@ -135,7 +186,7 @@ export default function CategoryPage() {
         </div>
       </main>
 
-      {/* ━━━ FOOTER (ADMIN PANEL YAHAN HAI) ━━━ */}
+      {/* ━━━ FOOTER ━━━ */}
       <footer className="bg-gray-900 text-gray-400 py-12">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <h3 className="text-2xl font-black text-white mb-2">MULTI<span className="text-rose-500">BRAND</span></h3>
