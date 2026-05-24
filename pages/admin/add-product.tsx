@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // ✅ FIX: next/router ki jagah next/navigation
+import { useRouter } from "next/router"; // ✅ FIX: next/router ki jagah next/navigation
 import { db } from "../../lib/firebase";
 import { collection, addDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import Link from "next/link";
