@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "../lib/sanity";
+import { client } from "../lib/sanity"; // ✅ Sanity Client import kiya
 import { ChevronDown, ShoppingCart } from "lucide-react";
 import { useCart } from "../pages/_app";
 
@@ -16,14 +15,19 @@ export default function SiteNavbar({ showAdminLink = true }: SiteNavbarProps) {
   const [open, setOpen] = useState(false);
   const { totalItems } = useCart();
 
+  // ✅ Sanity se Categories Fetch Karna
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "categories"), (snapshot) => {
-      const data = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((cat: any) => cat.active !== false);
-      setCategories(data);
-    });
-    return () => unsubscribe();
+    const fetchCategories = async () => {
+      try {
+        const query = `*[_type == "category" && active == true] | order(name asc) { _id, name, icon }`;
+        const data = await client.fetch(query);
+        // Sanity _id ko UI ke liye id mein map karna
+        setCategories(data.map((c: any) => ({ id: c._id, name: c.name, icon: c.icon })));
+      } catch (error) {
+        console.error("Categories fetch error:", error);
+      }
+    };
+    fetchCategories();
   }, []);
 
   return (
