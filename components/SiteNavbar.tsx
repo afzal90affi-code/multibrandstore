@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db } from "../lib/sanity";
 import { ChevronDown, ShoppingCart } from "lucide-react";
 import { useCart } from "../pages/_app";
 

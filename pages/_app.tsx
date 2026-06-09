@@ -3,8 +3,7 @@
 import '../styles/globals.css'
 import type { AppProps } from 'next/app'
 import React, { createContext, useContext, useState, ReactNode } from 'react'
-import { db } from '../lib/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+// ✅ Firebase imports hata diye
 
 interface CartItem { id: string; title: string; price: number; image: string; size: string; quantity: number; }
 interface CartContextType { items: CartItem[]; addToCart: (item: CartItem) => void; removeFromCart: (id: string, size: string) => void; updateQty: (id: string, size: string, quantity: number) => void; clearCart: () => void; totalItems: number; totalPrice: number; placeOrder: (details: any, adminWA: string) => Promise<void>; }
@@ -31,34 +30,41 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const totalItems = items.reduce((acc, i) => acc + i.quantity, 0)
   const totalPrice = items.reduce((acc, i) => acc + (i.price * i.quantity), 0)
   
-  // ✅ FINAL ORDER FUNCTION - Ab isme Product Links bhi aayenge
+  // ✅ FINAL ORDER FUNCTION - Secure API Route ke zariye Sanity mein save karega
   const placeOrder = async (details: any, adminWA: string) => {
     if (items.length === 0) return;
     
     try {
-      // 1. Firebase mein order save
-      await addDoc(collection(db, 'orders'), {
-        customerName: details.name, 
-        customerPhone: details.phone, 
-        customerCity: details.city,
-        customerAddress: details.address, 
-        paymentMethod: details.payment,
-        items: items.map(i => ({ title: i.title, size: i.size, qty: i.quantity, price: i.price })),
-        totalAmount: totalPrice, 
-        status: 'Pending', 
-        createdAt: serverTimestamp()
+      // 1. Secure Next.js API Route ko call karna (Yeh backend par chalega)
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: details.name, 
+          customerPhone: details.phone, 
+          customerCity: details.city,
+          customerAddress: details.address, 
+          paymentMethod: details.payment,
+          items: items.map(i => ({ title: i.title, size: i.size, qty: i.quantity, price: i.price })),
+          totalAmount: totalPrice, 
+          status: 'Pending'
+        })
       });
+
+      if (!response.ok) {
+        throw new Error('Order save failed');
+      }
       
       // 2. Website ka base URL lo (taaki link properly ban sake)
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
       // 3. WhatsApp message bana kar aapke number par bhejega (Links ke saath)
       const itemLines = items.map((item, index) => {
-        const productLink = `${baseUrl}/product/${item.id}`; // ✅ YEH PRODUCT KA LINK HAI
+        const productLink = `${baseUrl}/product/${item.id}`; 
         return (
           `*${index + 1}. ${item.title}*\n` +
           `   Size: ${item.size} | Qty: ${item.quantity} | PKR ${(item.price * item.quantity).toLocaleString()}\n` +
-          `   🔗 View: ${productLink}` // ✅ LINK MESSAGE MEIN ADD KIYA
+          `   🔗 View: ${productLink}` 
         );
       }).join('\n\n');
 

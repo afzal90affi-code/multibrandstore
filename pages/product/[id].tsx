@@ -4,13 +4,12 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
-import { db } from "../../lib/firebase";
-import { doc, getDoc, collection, query, where, getDocs, limit, onSnapshot } from "firebase/firestore";
+import { client } from "../../lib/sanity"; // ✅ Sanity Client import kiya
 import { ArrowLeft, ShoppingCart, CheckCircle, XCircle, Search, Heart, MessageCircle, Menu, X, Trash2, Banknote, Building } from "lucide-react";
 import { useCart } from "../_app";
 import { motion, AnimatePresence } from "framer-motion";
 
-const WA = "923333010842"; // ⚠️ APNA WHATSAPP NUMBER
+const WA = "923333010842"; 
 const LOGO_URL = "/logo.png";
 
 export default function ProductDetailPage() {
@@ -30,11 +29,16 @@ export default function ProductDetailPage() {
   const [checkout, setCheckout] = useState({ name: "", phone: "", city: "", address: "", payment: "COD" }); 
   const [cats, setCats] = useState<any[]>([]);
 
+  // ✅ Fetch Categories for Mobile Menu (Sanity GROQ)
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "categories"), (snap) => {
-      setCats(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((c: any) => c.active !== false));
-    });
-    return () => unsub();
+    const fetchCats = async () => {
+      try {
+        const query = `*[_type == "category" && active == true] { _id, name, icon, "image": image.asset->url }`;
+        const data = await client.fetch(query);
+        setCats(data.map((c: any) => ({ ...c, id: c._id })));
+      } catch (err) { console.error("Categories fetch error:", err); }
+    };
+    fetchCats();
   }, []);
 
   useEffect(() => {
@@ -44,30 +48,52 @@ export default function ProductDetailPage() {
     setSelectedSizes([]);
   }, [product]);
 
+  // ✅ Fetch Single Product & Recommended Products (Sanity GROQ)
   useEffect(() => {
     if (!router.isReady) return;
     if (!id) { setError("Product ID missing."); setLoading(false); return; }
+
     async function loadProduct() {
       try {
-        const snapshot = await getDoc(doc(db, "products", String(id)));
-        if (!snapshot.exists()) { setError("Product not found."); } else { 
-          const data = { id: snapshot.id, ...snapshot.data() } as any;
-          setProduct(data);
+        // 1. Main Product Fetch
+        // 🆕 ADDED: highlights, material in query
+        const prodQuery = `*[_type == "product" && _id == $productId][0] {
+          _id, title, price, description, highlights, material, inStock, sizes,
+          "categoryName": category->name,
+          "image": image.asset->url,
+          "image2": image2.asset->url
+        }`;
+        const prodData = await client.fetch(prodQuery, { productId: String(id) });
+
+        if (!prodData) { 
+          setError("Product not found."); 
+        } else { 
+          const mappedProd = { ...prodData, id: prodData._id, category: prodData.categoryName };
+          setProduct(mappedProd);
           setActiveImage(0);
-          if (data.category) {
-            const q = query(collection(db, "products"), where("category", "==", String(data.category)), limit(5));
-            const recSnap = await getDocs(q);
-            setRecommended(recSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => p.id !== data.id).slice(0, 4));
+
+          // 2. Recommended Products Fetch (Same Category)
+          if (mappedProd.category) {
+            const recQuery = `*[_type == "product" && category->name == $catName && _id != $currentId][0...4] {
+              _id, title, price, inStock,
+              "image": image.asset->url
+            }`;
+            const recData = await client.fetch(recQuery, { catName: mappedProd.category, currentId: mappedProd.id });
+            setRecommended(recData.map((p: any) => ({ ...p, id: p._id })));
           }
         }
-      } catch (err) { console.error(err); setError("Unable to load product."); } finally { setLoading(false); }
+      } catch (err) { 
+        console.error(err); 
+        setError("Unable to load product."); 
+      } finally { 
+        setLoading(false); 
+      }
     }
     loadProduct();
   }, [id, router.isReady]);
 
   const images = product ? [product.image, product.image2].filter(Boolean) : [];
 
-  // ✅ Helper function to generate Product Link
   const getProductLink = () => {
     if (typeof window !== "undefined" && product) {
       return `${window.location.origin}/product/${product.id}`;
@@ -191,20 +217,48 @@ export default function ProductDetailPage() {
                 {loading ? (<div className="text-center text-gray-500 py-12">Loading product details...</div>) : error ? (<div className="space-y-4 text-center py-12 text-red-600"><XCircle size={32} className="mx-auto" /><p className="text-lg font-semibold">{error}</p></div>) : product ? (
                   <>
                     <div className="flex items-center justify-between gap-3"><p className="text-sm uppercase tracking-[0.3em] text-rose-500 font-bold">{product.category || "Uncategorized"}</p><p className="text-2xl font-extrabold text-gray-900">PKR {Number(product.price || 0).toLocaleString()}</p></div>
+                    
                     <div className="mt-6 space-y-4 text-gray-600">
                       <p>{product.description || "A premium fabric product from MultiBrand. Order now for quick delivery across Pakistan."}</p>
-                      <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs uppercase tracking-[0.3em] text-gray-500">Category</p><p className="mt-2 font-semibold text-gray-900 capitalize">{product.category || "Lawn"}</p></div><div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs uppercase tracking-[0.3em] text-gray-500">Availability</p><p className="mt-2 font-semibold text-gray-900">{product.inStock ? "In stock" : "Currently unavailable"}</p></div></div>
+                      
+                      {/* 🆕 Highlights Section */}
+                      {product.highlights && product.highlights.length > 0 && (
+                        <div className="rounded-2xl bg-gray-50 p-4">
+                          <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Highlights</p>
+                          <ul className="mt-2 space-y-1.5">
+                            {product.highlights.map((h: string, i: number) => (
+                              <li key={i} className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                                <CheckCircle size={14} className="text-rose-500 mt-0.5 shrink-0" /> {h}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs uppercase tracking-[0.3em] text-gray-500">Category</p><p className="mt-2 font-semibold text-gray-900 capitalize">{product.category || "Lawn"}</p></div>
+                        <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs uppercase tracking-[0.3em] text-gray-500">Availability</p><p className="mt-2 font-semibold text-gray-900">{product.inStock ? "In stock" : "Currently unavailable"}</p></div>
+                        
+                        {/* 🆕 Material Section */}
+                        {product.material && (
+                          <div className="rounded-2xl bg-gray-50 p-4 sm:col-span-2">
+                            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Material</p>
+                            <p className="mt-2 font-semibold text-gray-900">{product.material}</p>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs uppercase tracking-[0.3em] text-gray-500">Sizes</p>{(() => { const sizes = Array.isArray(product?.sizes) ? product.sizes : product?.sizes ? String(product.sizes).split(",").map((s) => s.trim()).filter(Boolean) : []; return sizes.length > 0 ? (<div className="mt-3 flex flex-wrap gap-2">{sizes.map((size: string) => (<span key={size} className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700">{size}</span>))}</div>) : (<p className="mt-3 text-sm text-gray-500">Free Size</p>); })()}</div>
                     </div>
+
                     {sizeOptions.length > 0 && (<div className="mt-6 rounded-2xl bg-gray-50 p-4 space-y-3"><p className="text-xs uppercase tracking-[0.3em] text-gray-500">Choose Sizes</p><div className="grid grid-cols-2 gap-3">{sizeOptions.map((size) => (<label key={size} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 cursor-pointer transition ${selectedSizes.includes(size) ? "border-rose-600 bg-rose-50 text-rose-700" : "border-gray-300 bg-white text-gray-700"}`}><input type="checkbox" name="product-size" checked={selectedSizes.includes(size)} onChange={() => { setSelectedSizes(prev => prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size]); }} className="h-4 w-4 accent-rose-600" /><span className="text-sm font-semibold">{size}</span></label>))}</div></div>)}
                     
                     <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
                       <button disabled={!product?.inStock} onClick={() => { if (!product) return; const sizesToAdd = selectedSizes.length > 0 ? selectedSizes : ["Free Size"]; sizesToAdd.forEach((size) => { addToCart({ id: product.id, title: product.title || "Product", price: Number(product.price || 0), image: product.image || "", size: size, quantity: 1 }); }); alert(`${product.title || "Product"} cart mein add ho gaya!`); }} className={`w-full rounded-2xl px-5 py-4 text-sm font-bold text-white transition-colors ${product?.inStock ? "bg-rose-600 hover:bg-rose-700" : "bg-gray-400 cursor-not-allowed"}`}>{product?.inStock ? "Add to Cart" : "Out of Stock"}</button>
                       
-                      {/* ✅ WHATSAPP BUTTON WITH PRODUCT LINK */}
                       <button onClick={() => { 
                         if(!product) return; 
-                        const productLink = getProductLink(); // Getting current product link
+                        const productLink = getProductLink(); 
                         const msg = `Hi! I'm interested in:\n*${product.title}*\nPrice: PKR ${Number(product.price).toLocaleString()}\n\n🛍️ View Product: ${productLink}`; 
                         window.open(`https://wa.me/${WA}?text=${encodeURIComponent(msg)}`, "_blank"); 
                       }} className="w-full rounded-2xl border border-green-600 bg-white px-5 py-4 text-sm font-semibold text-green-700 text-center hover:bg-green-50 transition-colors flex items-center justify-center gap-2"><MessageCircle size={16} /> WhatsApp</button>
@@ -224,7 +278,6 @@ export default function ProductDetailPage() {
 
       <footer className="bg-gray-900 text-gray-400 py-12"><div className="max-w-7xl mx-auto px-4 text-center"><h3 className="text-2xl font-black text-white mb-2">MULTI<span className="text-rose-500">BRAND</span></h3><div className="flex justify-center gap-6 mb-6"><a href="/" className="hover:text-white text-xs uppercase tracking-wider">Home</a><Link href="/admin" className="hover:text-white text-xs uppercase tracking-wider">Admin Panel</Link></div><p className="text-[11px] text-gray-600">© 2025 MultiBrand. All Rights Reserved.</p></div></footer>
 
-      {/* ✅ FLOATING WHATSAPP BUTTON WITH PRODUCT LINK */}
       <a 
         href={`https://wa.me/${WA}?text=${encodeURIComponent(product ? `Hi! I'm looking at this product:\n*${product.title}*\n🛍️ Link: ${getProductLink()}` : "Salam! Mujhe dress ki detail chahiye.")}`} 
         target="_blank" 

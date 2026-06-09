@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import Head from "next/head";
-import { collection, onSnapshot, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+// ✅ Firebase hata kar Sanity client import kiya
+import { client } from "../../lib/sanity";
 import { isAdminLoggedIn, logoutAdmin } from "../../lib/adminAuth";
 import { ArrowLeft, Trash2, Edit3, LogOut } from "lucide-react";
 import AdminFooter from "../../components/AdminFooter";
@@ -24,18 +24,46 @@ export default function ManageCategories() {
     setAuthorized(true);
   }, [router]);
 
+  // ✅ Sanity se Data Fetch Karna (GROQ Query)
   useEffect(() => {
     if (!authorized) return;
-    const unsubscribe = onSnapshot(collection(db, "categories"), (snapshot) => {
-      setCategories(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    
+    const fetchCategories = async () => {
+      try {
+        const query = `*[_type == "category"] | order(name asc) {
+          _id, name, icon, active,
+          "image": image.asset->url
+        }`;
+        const data = await client.fetch(query);
+        // Sanity _id deti hai, UI compatibility ke liye isse id mein map kara
+        setCategories(data.map((c: any) => ({ ...c, id: c._id })));
+      } catch (error) {
+        console.error("Error fetching categories:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCategories();
   }, [authorized]);
 
+   // ✅ Secure API Route se Delete Karna (With Error Alert)
   const handleDelete = async (id: string) => {
     if (!confirm("Kya aap yakeen hain ke is category ko delete karna chahte hain?")) return;
-    await deleteDoc(doc(db, "categories", id));
+    try {
+      const res = await fetch(`/api/categories?id=${id}`, { method: 'DELETE' });
+      const data = await res.json(); // ✅ Response ko parse karna zaroori hai
+      
+      if (res.ok) {
+        // UI mein turant update (Optimistic UI)
+        setCategories(prev => prev.filter(cat => cat.id !== id));
+      } else {
+        // ✅ AB YE EXACT ERROR DIKHEGA JO SANITY DE RAHI HAI
+        alert("Delete Failed! Error: " + (data.error || "Unknown error"));
+      }
+    } catch (error: any) {
+      alert("Frontend Error: " + error.message);
+    }
   };
 
   if (authorized === null) {

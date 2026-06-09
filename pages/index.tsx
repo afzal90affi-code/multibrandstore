@@ -3,10 +3,9 @@
 import { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
-import { useRouter } from "next/router"; // ✅ Router import kiya
-import { db } from "../lib/firebase";
-import { collection, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
-import { Menu, X, MessageCircle, ArrowRight, ShoppingCart, Shield, Truck, Tag, Banknote, Building, Trash2, Search, Heart, ChevronDown, Sparkles, Star } from "lucide-react";
+import { useRouter } from "next/router";
+import { client } from "../lib/sanity";
+import { Menu, X, MessageCircle, ArrowRight, ShoppingCart, Shield, Truck, Banknote, Building, Trash2, Search, Heart, ChevronDown, Sparkles, Star } from "lucide-react";
 import { useCart } from "./_app";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -15,14 +14,14 @@ const LOGO_URL = "/logo.png";
 const SITE_URL = "https://yourdomain.com";
 
 const dummyCats = [
-  { id: "d1", name: "Lawn", icon: "🌸", image: "https://images.unsplash.com/photo-1583391733956-6c78276477e2?q=80&w=600", active: true },
-  { id: "d2", name: "Chiffon", icon: "✨", image: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600", active: true },
-  { id: "d3", name: "Silk", icon: "👗", image: "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600", active: true },
-  { id: "d4", name: "Fragrance", icon: "🧴", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=600", active: true },
+  { id: "d1", name: "Lawn", icon: "🌸", image: "https://images.unsplash.com/photo-1583391733956-6c78276477e2?q=80&w=600", active: true, subCategories: [] },
+  { id: "d2", name: "Chiffon", icon: "✨", image: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600", active: true, subCategories: [] },
+  { id: "d3", name: "Silk", icon: "👗", image: "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600", active: true, subCategories: [] },
+  { id: "d4", name: "Fragrance", icon: "🧴", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=600", active: true, subCategories: [] },
 ];
 
 export default function Home() {
-  const router = useRouter(); // ✅ Router use kiya
+  const router = useRouter();
   const [prods, setProds] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
   const [menu, setMenu] = useState(false);
@@ -34,19 +33,38 @@ export default function Home() {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [activeNav, setActiveNav] = useState("");
   
-  // ✅ Search States
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, "products"), (s) => {
-      const data = s.docs.map((d) => ({ id: d.id, ...d.data() }));
-      data.sort((a: any, b: any) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-      setProds(data);
-    });
-    const unsub2 = onSnapshot(collection(db, "categories"), (s) =>
-      setCats(s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c: any) => c.active !== false))
-    );
+    const fetchData = async () => {
+      try {
+        const productsQuery = `*[_type == "product"] | order(_createdAt desc) {
+          _id, title, price, sizes, featured, inStock,
+          "category": category->name,
+          "image": coalesce(image.asset->url, ""),
+          "image2": coalesce(image2.asset->url, "")
+        }`;
+        const productsData = await client.fetch(productsQuery);
+        setProds(productsData.map((p: any) => ({ ...p, id: p._id })));
+
+        // ✅ UPDATED: Categories Fetch with Sub-Categories GROQ Query
+        const catsQuery = `*[_type == "category" && active == true] | order(name asc) {
+          _id, name, icon, active,
+          "image": coalesce(image.asset->url, ""),
+          "subCategories": *[_type == "subCategory" && parentCategory._ref == ^._id && active == true] | order(name asc) {
+            _id, name, icon
+          }
+        }`;
+        const catsData = await client.fetch(catsQuery);
+        setCats(catsData.map((c: any) => ({ ...c, id: c._id })));
+      } catch (error) {
+        console.error("Error fetching data from Sanity:", error);
+      }
+    };
+
+    fetchData();
+
     const timer = setTimeout(() => {
       if (!localStorage.getItem("fd_lead")) setShowLead(true);
     }, 10000);
@@ -59,15 +77,25 @@ export default function Home() {
       }
     };
     window.addEventListener("scroll", handleScroll);
-    return () => { unsub1(); unsub2(); clearTimeout(timer); window.removeEventListener("scroll", handleScroll); };
+    return () => { clearTimeout(timer); window.removeEventListener("scroll", handleScroll); };
   }, []);
 
   const closeLead = () => { setShowLead(false); localStorage.setItem("fd_lead", "1"); };
+  
   const saveLead = async () => {
     if (!leadForm.name.trim() || !leadForm.phone.trim()) return;
-    await addDoc(collection(db, "leads"), { ...leadForm, createdAt: serverTimestamp(), source: "popup" });
-    closeLead();
+    try {
+      await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...leadForm, source: "popup" }),
+      });
+      closeLead();
+    } catch (error) {
+      console.error("Error saving lead:", error);
+    }
   };
+
   const toggleWishlist = (id: string) => setWishlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const featured = prods.filter((p: any) => p.featured).slice(0, 8);
@@ -77,7 +105,6 @@ export default function Home() {
     addToCart({ id: p.id, title: p.title, price: Number(p.price), image: p.image, size: p.sizes?.[0] || "Free Size", quantity: 1 });
   };
 
-  // ✅ Search Results Logic (Filters from loaded products)
   const searchResults = searchQuery.trim().length > 1 
     ? prods.filter(p => 
         p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -114,7 +141,6 @@ export default function Home() {
     window.open(`https://wa.me/${WA}?text=${encodeURIComponent(message)}`, "_blank");
     
     setCheckout({ name: "", phone: "", city: "", address: "", payment: "COD" });
-    // ✅ Order ke baad Home Page par redirect kare
     router.push("/");
   };
 
@@ -190,16 +216,28 @@ export default function Home() {
               </a>
             ))}
 
+            {/* ✅ UPDATED: NAVBAR DROPDOWN WITH SUB-CATEGORIES */}
             <div className="relative group">
               <button className={`nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 flex items-center gap-1 ${activeNav === "categories" ? "nav-link-active" : ""}`}>
                 Collections <ChevronDown size={12} strokeWidth={2} className="transition-transform duration-300 group-hover:rotate-180" />
               </button>
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-52 bg-white border border-gray-100 shadow-xl shadow-gray-100/80 rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-1.5 origin-top scale-95 group-hover:scale-100">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white border border-gray-100 shadow-xl shadow-gray-100/80 rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-1.5 origin-top scale-95 group-hover:scale-100">
                 {displayCats.map((c) => (
-                  <Link key={c.id} href={`/category/${c.name}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
-                    <span className="text-base">{c.icon}</span>
-                    <span className="text-[12.5px] font-medium text-gray-700 capitalize tracking-wide">{c.name}</span>
-                  </Link>
+                  <div key={c.id}>
+                    <Link href={`/category/${c.name}`} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors">
+                      <span className="text-base">{c.icon}</span>
+                      <span className="text-[12.5px] font-medium text-gray-700 capitalize tracking-wide">{c.name}</span>
+                    </Link>
+                    {c.subCategories && c.subCategories.length > 0 && (
+                      <div className="pl-10 pb-1">
+                        {c.subCategories.map((sc: any) => (
+                          <Link key={sc._id} href={`/category/${c.name}`} className="block py-1 text-[11px] text-gray-500 hover:text-rose-600 capitalize transition-colors">
+                            {sc.name}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -210,7 +248,6 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-1">
-            {/* ✅ SEARCH BUTTON */}
             <button onClick={() => setSearchOpen(true)} className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Search">
               <Search size={18} strokeWidth={1.5} />
             </button>
@@ -218,12 +255,7 @@ export default function Home() {
               <Heart size={18} strokeWidth={1.5} />
             </button>
             
-            {/* ✅ CART BUTTON (No Link, just opens cart) */}
-            <button 
-              onClick={() => setCartOpen(true)} 
-              className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" 
-              aria-label="Cart"
-            >
+            <button onClick={() => setCartOpen(true)} className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Cart">
               <ShoppingCart size={18} strokeWidth={1.5} />
               <AnimatePresence>
                 {totalItems > 0 && (
@@ -246,22 +278,12 @@ export default function Home() {
             <motion.div initial={{ y: -30, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: -30, opacity: 0, scale: 0.95 }}
               className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
               
-              {/* Search Input */}
               <div className="flex items-center border-b border-gray-100 px-5">
                 <Search size={18} className="text-gray-400" strokeWidth={1.5} />
-                <input
-                  autoFocus
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search for dresses, categories..."
-                  className="w-full px-4 py-5 text-gray-900 bg-transparent focus:outline-none text-[15px]"
-                />
-                <button onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="text-gray-400 hover:text-gray-700">
-                  <X size={18} strokeWidth={1.5} />
-                </button>
+                <input autoFocus value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search for dresses, categories..." className="w-full px-4 py-5 text-gray-900 bg-transparent focus:outline-none text-[15px]" />
+                <button onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="text-gray-400 hover:text-gray-700"><X size={18} strokeWidth={1.5} /></button>
               </div>
 
-              {/* Live Results */}
               {searchQuery.length > 1 && (
                 <div className="max-h-[60vh] overflow-y-auto p-2">
                   {searchResults.length === 0 ? (
@@ -305,12 +327,25 @@ export default function Home() {
                 {[{ label: "Home", href: "#home" }, { label: "New In", href: "#featured" }, { label: "About", href: "#about" }].map(({ label, href }) => (
                   <a key={label} href={href} onClick={() => setMenu(false)} className="block py-3 text-[15px] font-medium text-gray-800 border-b border-gray-50 hover:text-rose-600 transition-colors">{label}</a>
                 ))}
+                
+                {/* ✅ UPDATED: MOBILE MENU WITH SUB-CATEGORIES */}
                 <div className="pt-4">
                   <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-gray-400 mb-3">Collections</p>
-                  {displayCats.map((c) => (
-                    <Link key={c.id} href={`/category/${c.name}`} onClick={() => setMenu(false)} className="flex items-center gap-3 py-2.5 text-[14px] font-medium text-gray-700 hover:text-rose-600 transition-colors">
-                      <span>{c.icon}</span> {c.name}
-                    </Link>
+                  {displayCats.map((c: any) => (
+                    <div key={c.id}>
+                      <Link href={`/category/${c.name}`} onClick={() => setMenu(false)} className="flex items-center gap-3 py-2 text-[14px] font-medium text-gray-800 hover:text-rose-600 transition-colors">
+                        <span>{c.icon}</span> {c.name}
+                      </Link>
+                      {c.subCategories && c.subCategories.length > 0 && (
+                        <div className="pl-8 pb-1">
+                          {c.subCategories.map((sc: any) => (
+                            <Link key={sc._id} href={`/category/${c.name}`} onClick={() => setMenu(false)} className="block py-1 text-[12px] text-gray-500 hover:text-rose-600 capitalize transition-colors">
+                              {sc.name}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </nav>
@@ -438,13 +473,10 @@ export default function Home() {
               <span className="text-white/60 text-xs tracking-wider">Cash on Delivery across Pakistan.</span>
             </p>
             <div className="flex flex-wrap gap-3 mt-8">
-              <a href="#featured"
-                className="group inline-flex items-center gap-2.5 bg-white text-gray-900 font-medium px-7 py-3.5 rounded-full text-[12.5px] tracking-wider uppercase hover:bg-rose-50 transition-colors shadow-xl shadow-black/20">
-                Shop Now
-                <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+              <a href="#featured" className="group inline-flex items-center gap-2.5 bg-white text-gray-900 font-medium px-7 py-3.5 rounded-full text-[12.5px] tracking-wider uppercase hover:bg-rose-50 transition-colors shadow-xl shadow-black/20">
+                Shop Now <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
               </a>
-              <a href="#categories"
-                className="inline-flex items-center gap-2.5 border border-white/25 text-white font-medium px-7 py-3.5 rounded-full text-[12.5px] tracking-wider uppercase hover:bg-white/10 transition-colors backdrop-blur-sm">
+              <a href="#categories" className="inline-flex items-center gap-2.5 border border-white/25 text-white font-medium px-7 py-3.5 rounded-full text-[12.5px] tracking-wider uppercase hover:bg-white/10 transition-colors backdrop-blur-sm">
                 Browse Collections
               </a>
             </div>
@@ -476,8 +508,7 @@ export default function Home() {
                       <img src={p.image2} alt="" className="product-img-alt absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500" />
                     )}
 
-                    <button
-                      onClick={(e) => { e.preventDefault(); toggleWishlist(p.id); }}
+                    <button onClick={(e) => { e.preventDefault(); toggleWishlist(p.id); }}
                       className="absolute top-3 right-3 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-sm">
                       <Heart size={14} strokeWidth={1.5} className={wishlist.includes(p.id) ? "fill-rose-500 stroke-rose-500" : "stroke-gray-600"} />
                     </button>
@@ -505,7 +536,7 @@ export default function Home() {
                       <span className="text-[13.5px] font-semibold text-gray-900">PKR {Number(p.price).toLocaleString()}</span>
                     </div>
                     {p.sizes?.length > 0 && (
-                      <p className="text-[10px] text-gray-400 mt-1 tracking-wide">{p.sizes.join(" · ")}</p>
+                      <p className="text-[15px] text-gray-400 mt-1 tracking-wide">{p.sizes.join(" · ")}</p>
                     )}
                   </div>
                 </motion.div>
@@ -526,35 +557,56 @@ export default function Home() {
             <h3 className="font-display text-3xl sm:text-5xl font-light text-white mt-2 leading-tight">
               Signature <em>Silk</em><br />Collection
             </h3>
-            <Link href="/category/Silk"
-              className="inline-flex items-center gap-2 mt-6 text-[11.5px] tracking-[0.18em] uppercase font-medium text-white border-b border-white/40 pb-0.5 hover:border-rose-400 hover:text-rose-300 transition-colors">
+            <Link href="/category/Silk" className="inline-flex items-center gap-2 mt-6 text-[11.5px] tracking-[0.18em] uppercase font-medium text-white border-b border-white/40 pb-0.5 hover:border-rose-400 hover:text-rose-300 transition-colors">
               Explore Now <ArrowRight size={12} />
             </Link>
           </motion.div>
         </div>
       </section>
 
-      {/* ━━━ CATEGORIES ━━━ */}
+              {/* ✅ UPDATED: CATEGORIES GRID WITH SUB-CATEGORIES (Product Card Style + Clickable Image) */}
       <section id="categories" className="py-16 md:py-24 bg-[#FAFAF9]">
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <div className="text-center mb-12 md:mb-16">
             <span className="text-[10px] font-medium tracking-[0.24em] uppercase text-rose-500">Explore</span>
             <h2 className="font-display text-3xl md:text-5xl font-light text-gray-900 mt-2">Shop by <em>Category</em></h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-10 md:gap-x-6">
             {displayCats.map((c, i) => (
-              <motion.div key={c.id} initial={{ opacity: 0, scale: 0.97 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.08, duration: 0.5 }}>
-                <Link href={`/category/${c.name}`} className="group block relative overflow-hidden rounded-xl aspect-square shadow-sm">
-                  <img src={c.image} alt={c.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent group-hover:from-black/75 transition-all duration-300" />
-                  <div className="absolute bottom-0 left-0 right-0 p-5">
-                    <span className="text-2xl block mb-1.5">{c.icon}</span>
-                    <h4 className="font-display text-xl font-medium text-white capitalize group-hover:text-rose-300 transition-colors">{c.name}</h4>
-                    <p className="text-[10px] tracking-[0.18em] uppercase text-white/50 mt-0.5 flex items-center gap-1">
-                      Shop Now <ArrowRight size={9} />
-                    </p>
+              <motion.div key={c.id} initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5 }}
+                className="product-card group cursor-pointer">
+                
+                {/* Image Container */}
+                <div className="relative aspect-[3/4] overflow-hidden bg-[#F6F4F2] rounded-sm">
+                  
+                  {/* ✅ Invisible Link Layer (Covers the whole image for clicking anywhere) */}
+                  <Link href={`/category/${c.name}`} className="absolute inset-0 z-10"></Link>
+
+                  <img src={c.image} alt={c.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+
+                  {/* Hover Overlay Button (pointer-events-none so it doesn't block the link above) */}
+                  <div className="product-overlay absolute bottom-0 left-0 right-0 p-3 opacity-0 transition-opacity duration-300 pointer-events-none">
+                    <span className="block w-full bg-white/95 backdrop-blur-sm text-gray-900 py-2.5 text-[10.5px] font-semibold tracking-[0.12em] uppercase text-center rounded-sm">
+                      Explore
+                    </span>
                   </div>
-                </Link>
+                </div>
+
+                {/* Text Below Image */}
+                <div className="mt-3.5">
+                  <Link href={`/category/${c.name}`}>
+                    <h3 className="text-[19px] font-medium text-gray-800 leading-snug hover:text-rose-600 transition-colors line-clamp-2">
+                      {c.icon} {c.name}
+                    </h3>
+                  </Link>
+                  
+                  {/* Sub-Categories */}
+                  {c.subCategories && c.subCategories.length > 0 && (
+                    <p className="text-[15px] text-gray-400 mt-1 tracking-wide">
+                      {c.subCategories.map((sc: any) => sc.name).join(" · ")}
+                    </p>
+                  )}
+                </div>
               </motion.div>
             ))}
           </div>
@@ -604,10 +656,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 pb-10 border-b border-white/5">
             <div>
-              <img src={LOGO_URL} alt="MultiBrand" className="h-8 invert mb-4" />
-              <p className="text-[12.5px] leading-relaxed text-gray-600 max-w-xs">
-                Premium Pakistani fashion delivered to your doorstep with love.
-              </p>
+              <img src={LOGO_URL} alt="MultiBrand" className="h-34 invert mb-4" />
+              <p className="text-[12.5px] leading-relaxed text-gray-600 max-w-xs">Premium Pakistani fashion delivered to your doorstep with love.</p>
             </div>
             <div>
               <p className="text-[10px] tracking-[0.2em] uppercase text-gray-600 mb-4 font-medium">Collections</p>
@@ -661,8 +711,7 @@ export default function Home() {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400 transition-colors" />
                   <input value={leadForm.phone} onChange={(e) => setLeadForm({ ...leadForm, phone: e.target.value })} placeholder="WhatsApp Number"
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400 transition-colors" />
-                  <button onClick={saveLead}
-                    className="w-full bg-[#1a1a1a] hover:bg-rose-700 text-white font-medium py-3 rounded-xl text-[12.5px] tracking-wider uppercase transition-colors">
+                  <button onClick={saveLead} className="w-full bg-[#1a1a1a] hover:bg-rose-700 text-white font-medium py-3 rounded-xl text-[12.5px] tracking-wider uppercase transition-colors">
                     Subscribe →
                   </button>
                 </div>

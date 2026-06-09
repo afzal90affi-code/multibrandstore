@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import Head from "next/head";
-import { collection, onSnapshot, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { client } from "../../lib/sanity"; // ✅ Sanity Client
 import { isAdminLoggedIn, logoutAdmin } from "../../lib/adminAuth";
 import { ArrowLeft, Trash2, Edit3, LogOut } from "lucide-react";
 import AdminFooter from "../../components/AdminFooter";
@@ -24,18 +23,43 @@ export default function ManageProducts() {
     setAuthorized(true);
   }, [router]);
 
+  // ✅ Sanity se Products Fetch Karna (GROQ Query)
   useEffect(() => {
     if (!authorized) return;
-    const unsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
-      setProducts(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    
+    const fetchProducts = async () => {
+      try {
+        const query = `*[_type == "product"] | order(_createdAt desc) {
+          _id, title, price, inStock, sizes,
+          "category": category->name,
+          "image": image.asset->url,
+          "image2": image2.asset->url
+        }`;
+        const data = await client.fetch(query);
+        setProducts(data.map((p: any) => ({ ...p, id: p._id })));
+      } catch (error) {
+        console.error("Error fetching products:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
   }, [authorized]);
 
+  // ✅ Secure API Route se Delete Karna
   const handleDelete = async (id: string) => {
     if (!confirm("Kya aap yakeen hain ke is product ko delete karna chahte hain?")) return;
-    await deleteDoc(doc(db, "products", id));
+    try {
+      const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setProducts(prev => prev.filter(p => p.id !== id));
+      } else {
+        alert("Product delete nahi hua. Dobara try karein.");
+      }
+    } catch (error) {
+      alert("Error deleting product.");
+    }
   };
 
   if (authorized === null) {
@@ -87,7 +111,6 @@ export default function ManageProducts() {
                   <h2 className="text-lg font-bold text-gray-900">{product.title || "Untitled"}</h2>
                   <div className="mt-1 text-sm text-gray-600">
                     <p>Category: {product.category || "-"}</p>
-                    {product.collection && <p>Collection: {product.collection}</p>}
                     <p className="mt-2">Sizes: {Array.isArray(product.sizes) ? product.sizes.join(", ") : product.sizes || "Free Size"}</p>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
