@@ -1,83 +1,89 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { writeClient } from '../../lib/sanity';
+// FILE: pages/api/products.ts  (PURANA PURA CODE REPLACE KARO)
+import type { NextApiRequest, NextApiResponse } from "next";
+import { client } from "../../lib/sanity";
+
+type SanityRef = { _type: "reference"; _ref: string };
+type ImageRef = { _type: "image"; asset: SanityRef };
+type ProductVariant = {
+  _type: "variant";
+  _key: string;
+  printName: string;
+  inStock: boolean;
+  image: ImageRef;
+  price?: number;
+};
+type ProductDoc = {
+  _type: "product";
+  title: string;
+  price: number;
+  inStock: boolean;
+  featured: boolean;
+  sizes: string[];
+  category: SanityRef;
+  image: ImageRef;
+  brand?: string;
+  oldPrice?: number;
+  subCategory?: SanityRef;
+  description?: string;
+  material?: string;
+  highlights?: string[];
+  image2?: ImageRef;
+  variants?: ProductVariant[];
+};
+
+function imgRef(assetId: string): ImageRef {
+  return { _type: "image", asset: { _type: "reference", _ref: assetId } };
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  
-  // ✅ 1. DELETE Request (Product Delete karne ke liye)
-  if (req.method === 'DELETE') {
-    const { id } = req.query;
-    
-    if (!id || typeof id !== 'string') {
-      return res.status(400).json({ error: 'Product ID is required' });
-    }
-
-    try {
-      await writeClient.delete(id);
-      res.status(200).json({ success: true });
-    } catch (error: any) {
-      console.error('Product Delete Error:', error);
-      res.status(500).json({ error: error.message || 'Failed to delete product' });
-    }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // ✅ 2. POST Request (Product Add karne ke liye)
-  else if (req.method === 'POST') {
-    try {
-      // 🆕 description, highlights, material bhi extract kiye
-      const { title, price, category, subCategory, sizes, featured, inStock, image, image2, description, highlights, material } = req.body;
-      
-      const newProduct = await writeClient.create({
-        _type: 'product',
-        title,
-        price: Number(price),
-        category: category ? { _type: 'reference', _ref: category } : undefined,
-        subCategory: subCategory ? { _type: 'reference', _ref: subCategory } : undefined,
-        sizes: sizes || [],
-        featured: featured || false,
-        inStock: inStock !== false,
-        image: image ? { _type: 'image', asset: { _ref: image } } : undefined,
-        image2: image2 ? { _type: 'image', asset: { _ref: image2 } } : undefined,
-        // 🆕 NEW: Product Details fields
-        description: description || undefined,
-        highlights: highlights && highlights.length > 0 ? highlights : undefined,
-        material: material || undefined,
-      });
+  try {
+    const b = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) || {};
 
-      res.status(200).json({ success: true, data: newProduct });
-    } catch (error: any) {
-      console.error('Product Create Error:', error);
-      res.status(500).json({ error: error.message || 'Failed to create product' });
+    if (!b.title || !b.price || !b.category || !b.image) {
+      return res.status(400).json({ error: "title, price, category aur image zaroori hain" });
     }
-  }
 
-  // ✅ 3. PUT Request (Product Update karne ke liye)
-  else if (req.method === 'PUT') {
-    try {
-      const { id, imageAssetId, image2AssetId, category, subCategory, ...updates } = req.body;
-      
-      if (!id) return res.status(400).json({ error: 'Product ID is required' });
+    const doc: ProductDoc = {
+      _type: "product",
+      title: String(b.title).trim(),
+      price: Number(b.price),
+      inStock: b.inStock !== false,
+      featured: Boolean(b.featured),
+      sizes: Array.isArray(b.sizes) ? b.sizes.filter(Boolean) : [],
+      category: { _type: "reference", _ref: String(b.category) },
+      image: imgRef(String(b.image)),
+    };
 
-      // Handle image updates
-      if (imageAssetId) updates.image = { _type: 'image', asset: { _ref: imageAssetId } };
-      if (image2AssetId) updates.image2 = { _type: 'image', asset: { _ref: image2AssetId } };
-
-      // Handle reference updates
-      if (category) updates.category = { _type: 'reference', _ref: category };
-      if (subCategory) updates.subCategory = { _type: 'reference', _ref: subCategory };
-
-      // 🆕 NOTE: description, highlights, aur material automatically `...updates` mein aa jayenge 
-      // kyunki humne unhe destructure nahi kiya, toh unhe alag se handle karne ki zaroorat nahi hai!
-      
-      await writeClient.patch(id).set(updates).commit();
-      res.status(200).json({ success: true });
-    } catch (error: any) {
-      console.error('Product Update Error:', error);
-      res.status(500).json({ error: error.message || 'Failed to update product' });
+    if (b.brand) doc.brand = String(b.brand).trim();
+    if (b.oldPrice && Number(b.oldPrice) > 0) doc.oldPrice = Number(b.oldPrice);
+    if (b.subCategory) doc.subCategory = { _type: "reference", _ref: String(b.subCategory) };
+    if (b.description) doc.description = String(b.description).trim();
+    if (b.material) doc.material = String(b.material).trim();
+    if (Array.isArray(b.highlights) && b.highlights.length) {
+      doc.highlights = b.highlights.map((h: unknown) => String(h).trim()).filter(Boolean);
     }
-  }
-  
-  // ✅ 4. Agar koi aur method ho
-  else {
-    res.status(405).end();
+    if (b.image2) doc.image2 = imgRef(String(b.image2));
+    if (Array.isArray(b.variants) && b.variants.length) {
+      doc.variants = b.variants
+        .filter((v: { printName?: string; image?: string }) => v && v.printName && v.image)
+        .map((v: { printName: string; image: string; inStock?: boolean; price?: number }, i: number) => ({
+          _type: "variant",
+          _key: `v${Date.now()}${i}`,
+          printName: String(v.printName).trim(),
+          inStock: v.inStock !== false,
+          image: imgRef(String(v.image)),
+          ...(v.price && Number(v.price) > 0 ? { price: Number(v.price) } : {}),
+        }));
+    }
+
+    const created = await client.create(doc);
+    return res.status(200).json({ ok: true, id: created._id });
+  } catch (err) {
+    console.error("Product create failed:", err);
+    return res.status(500).json({ error: "Product save nahi hua" });
   }
 }

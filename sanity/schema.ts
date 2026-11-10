@@ -1,3 +1,4 @@
+
 // sanity/schema.ts
 import { defineType, defineField } from 'sanity';
 
@@ -73,6 +74,7 @@ const subCategory = defineType({
 });
 
 // ✅ 3. Product Schema
+
 const product = defineType({
   name: 'product',
   title: 'Product',
@@ -89,6 +91,13 @@ const product = defineType({
       title: 'Price (PKR)',
       type: 'number',
       validation: (Rule) => Rule.required(),
+    }),
+    // 🆕 NEW: Sale Price (purani price — cross ho kar dikhegi)
+    defineField({
+      name: 'oldPrice',
+      title: 'Old Price (Sale ke liye)',
+      type: 'number',
+      description: 'Agar sale chal rahi hai to asli price yahan daalo — website par cut ho kar dikhegi',
     }),
     // 🆕 NEW: Product Details Added Here
     defineField({
@@ -167,7 +176,54 @@ const product = defineType({
       type: 'image',
       options: { hotspot: true },
     }),
+    // 🆕 NEW: Variants (ek product ke multiple prints/colors ek hi jagah)
+    defineField({
+      name: 'variants',
+      title: 'Variants (Prints/Colors)',
+      type: 'array',
+      of: [{ type: 'variant' }],
+      description: 'Same suit ke different prints/colors yahan add karo — titles duplicate karne ki zaroorat nahi',
+    }),
   ],
+});
+
+// ✅ 3.1 Variant Schema (product ke andar use hota hai — Print/Color option)
+const variant = defineType({
+  name: 'variant',
+  title: 'Variant (Print/Color)',
+  type: 'object',
+  fields: [
+    defineField({
+      name: 'printName',
+      title: 'Print / Color ka Naam',
+      type: 'string',
+      description: 'e.g. "Blue Floral", "Maroon Embroidered"',
+    }),
+    defineField({
+      name: 'image',
+      title: 'Is Print ki Photo',
+      type: 'image',
+      options: { hotspot: true },
+    }),
+    defineField({
+      name: 'inStock',
+      title: 'Stock me hai?',
+      type: 'boolean',
+      initialValue: true,
+    }),
+    defineField({
+      name: 'price',
+      title: 'Alag Price (optional)',
+      type: 'number',
+      description: 'Agar is print ki price product se different ho to yahan daalo, warna khali chhoro',
+    }),
+  ],
+  preview: {
+    select: {
+      title: 'printName',
+      media: 'image',
+    },
+  },
 });
 
 // ✅ 4. Order Item Schema (Order ke andar jo products aayenge)
@@ -232,15 +288,40 @@ const lead = defineType({
     defineField({ name: 'need', title: 'Need', type: 'string' }),
     defineField({ name: 'source', title: 'Source', type: 'string' }),
     defineField({ name: 'createdAt', title: 'Created At', type: 'datetime' }),
+    // YE FIELD product ke fields[] me title ke BAAD paste karo (REPLACE nahi — ADD karna hai)
+defineField({
+  name: "brand",
+  title: "Brand Name",
+  type: "string",
+  description: "Jaise: Khaadi, Sapphire, Gul Ahmed, Maria B, Ramsha, bin saeed, sadabahar, zullbury, Tawakkal...",
+}),
+// subCategory ke fields[] me ADD karo
+defineField({
+  name: "description",
+  title: "SEO Description",
+  type: "text",
+  rows: 3,
+  description: "Is collection ka 2-3 line intro — page aur Google meta dono me use hoga",
+}),
+// category ke fields[] me ADD karo
+defineField({
+  name: "description",
+  title: "SEO Description",
+  type: "text",
+  rows: 3,
+  description: "Is category ka 2-3 line intro — category page aur Google me dikhega",
+}),
   ],
 });
 
-// ✅ Sabhi schemas ko export karna
+
+// ✅ Sabhi schemas ko export karna (🆕 variant bhi add kar diya)
 export const schemaTypes = [
   category,
   subCategory,
   product,
+  variant, // 🆕 NEW
   orderItem,
   order,
-  lead, // ✅ Lead bhi export kar diya
+  lead,
 ];

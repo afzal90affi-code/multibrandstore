@@ -4,9 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "build": "node scripts/generate-sitemap.js || echo sitemap-skip && next build",
+    "start": "next start"
   },
   "dependencies": {
     "@sanity/client": "^7.22.1",

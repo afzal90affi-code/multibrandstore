@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /test
+
+Sitemap: https://multibrandstore.vercel.app/sitemap.xml
