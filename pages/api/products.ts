@@ -1,6 +1,6 @@
 // FILE: pages/api/products.ts  (PURANA PURA CODE REPLACE KARO)
 import type { NextApiRequest, NextApiResponse } from "next";
-import { client } from "../../lib/sanity";
+import { writeClient } from "../../lib/sanity";
 
 type SanityRef = { _type: "reference"; _ref: string };
 type ImageRef = { _type: "image"; asset: SanityRef };
@@ -28,11 +28,27 @@ type ProductDoc = {
   material?: string;
   highlights?: string[];
   image2?: ImageRef;
+  image3?: ImageRef;
   variants?: ProductVariant[];
 };
 
 function imgRef(assetId: string): ImageRef {
   return { _type: "image", asset: { _type: "reference", _ref: assetId } };
+}
+
+function toId(v: unknown): string {
+  if (v && typeof v === "object" && "_ref" in (v as Record<string, unknown>)) {
+    return String((v as Record<string, unknown>)._ref).trim();
+  }
+  return String(v || "").trim();
+}
+
+function toSizes(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof v === "string" && v.trim()) {
+    return v.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -43,47 +59,77 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const b = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) || {};
 
-    if (!b.title || !b.price || !b.category || !b.image) {
+    const title = String(b.title || "").trim();
+    const price = Number(b.price);
+    const categoryRef = toId(b.category);
+    const mainImage = toId(b.image);
+
+    if (!title || !price || price <= 0 || !categoryRef || !mainImage) {
       return res.status(400).json({ error: "title, price, category aur image zaroori hain" });
     }
 
     const doc: ProductDoc = {
       _type: "product",
-      title: String(b.title).trim(),
-      price: Number(b.price),
+      title: title,
+      price: price,
       inStock: b.inStock !== false,
       featured: Boolean(b.featured),
-      sizes: Array.isArray(b.sizes) ? b.sizes.filter(Boolean) : [],
-      category: { _type: "reference", _ref: String(b.category) },
-      image: imgRef(String(b.image)),
+      sizes: toSizes(b.sizes),
+      category: { _type: "reference", _ref: categoryRef },
+      image: imgRef(mainImage),
     };
 
-    if (b.brand) doc.brand = String(b.brand).trim();
-    if (b.oldPrice && Number(b.oldPrice) > 0) doc.oldPrice = Number(b.oldPrice);
-    if (b.subCategory) doc.subCategory = { _type: "reference", _ref: String(b.subCategory) };
-    if (b.description) doc.description = String(b.description).trim();
-    if (b.material) doc.material = String(b.material).trim();
+    const brand = String(b.brand || "").trim();
+    if (brand) doc.brand = brand;
+
+    const oldPrice = Number(b.oldPrice);
+    if (oldPrice && oldPrice > 0) doc.oldPrice = oldPrice;
+
+    const subRef = toId(b.subCategory);
+    if (subRef) doc.subCategory = { _type: "reference", _ref: subRef };
+
+    const description = String(b.description || "").trim();
+    if (description) doc.description = description;
+
+    const material = String(b.material || "").trim();
+    if (material) doc.material = material;
+
     if (Array.isArray(b.highlights) && b.highlights.length) {
       doc.highlights = b.highlights.map((h: unknown) => String(h).trim()).filter(Boolean);
     }
-    if (b.image2) doc.image2 = imgRef(String(b.image2));
+
+    const img2 = toId(b.image2);
+    if (img2) doc.image2 = imgRef(img2);
+
+    const img3 = toId(b.image3);
+    if (img3) doc.image3 = imgRef(img3);
+
     if (Array.isArray(b.variants) && b.variants.length) {
-      doc.variants = b.variants
+      const variants: ProductVariant[] = b.variants
         .filter((v: { printName?: string; image?: string }) => v && v.printName && v.image)
-        .map((v: { printName: string; image: string; inStock?: boolean; price?: number }, i: number) => ({
-          _type: "variant",
-          _key: `v${Date.now()}${i}`,
-          printName: String(v.printName).trim(),
-          inStock: v.inStock !== false,
-          image: imgRef(String(v.image)),
-          ...(v.price && Number(v.price) > 0 ? { price: Number(v.price) } : {}),
-        }));
+        .map((v: { printName: string; image: string; inStock?: boolean; price?: number }, i: number) => {
+          const item: ProductVariant = {
+            _type: "variant",
+            _key: "v" + Date.now() + "_" + i,
+            printName: String(v.printName).trim(),
+            inStock: v.inStock !== false,
+            image: imgRef(toId(v.image)),
+          };
+          const vp = Number(v.price);
+          if (vp && vp > 0) item.price = vp;
+          return item;
+        });
+      if (variants.length) doc.variants = variants;
     }
 
-    const created = await client.create(doc);
+    const created = await writeClient.create(doc);
     return res.status(200).json({ ok: true, id: created._id });
   } catch (err) {
-    console.error("Product create failed:", err);
-    return res.status(500).json({ error: "Product save nahi hua" });
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("Product create failed:", detail);
+    return res.status(500).json({
+      error: "Product save nahi hua",
+      detail: String(detail).slice(0, 400),
+    });
   }
 }

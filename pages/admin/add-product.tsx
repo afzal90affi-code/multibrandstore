@@ -1,401 +1,513 @@
 // FILE: pages/admin/add-product.tsx  (PURANA PURA CODE REPLACE KARO)
-"use client";
+import type { ChangeEvent, CSSProperties } from "react";
+import { useEffect, useState } from "react";
 
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { useRouter } from "next/router";
-import { client } from "../../lib/sanity"; // apna purana import
-import { isAdminLoggedIn } from "../../lib/adminAuth";
-import { ArrowLeft, Upload, Plus, Trash2, Loader2 } from "lucide-react";
-import AdminFooter from "../../components/AdminFooter"; // agar path alag hai to APNA wala likhna
+const PROJECT_ID = "vieoyox0";
+const DATASET = "production";
 
-const BRAND_SUGGESTIONS = [
-  "Khaadi", "Sapphire", "Gul Ahmed", "Maria B", "Sana Safinaz", "Limelight",
-  "Bonanza Satrangi", "Alkaram Studio", "Nishat Linen", "Charizma", "Baroque",
-  "Elaf", "Ramsha", "Tawakkal", "Agha Noor", "Zaha", "Erina", "Mahay",
-];
+const SIZE_OPTIONS = ["S", "M", "L", "XL", "XXL", "Free Size", "Unstitched"];
 
-const SIZE_OPTIONS = ["S", "M", "L", "XL", "XXL", "Free Size"]; // apne hisab se badal sakte ho
+type Uploaded = { assetId: string; url: string };
 
-type Uploaded = { url: string; assetId: string };
-type VariantRow = { printName: string; price: string; inStock: boolean; uploading: boolean; image: Uploaded | null };
+type DesignRow = {
+  id: string;
+  name: string;
+  uploading: boolean;
+  uploading2: boolean;
+  uploading3: boolean;
+  image: Uploaded | null;
+  image2: Uploaded | null;
+  image3: Uploaded | null;
+  sizes: string[];
+};
 
-const inputCls = "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400";
-const labelCls = "block text-sm font-semibold text-neutral-700 mb-1.5";
+type CatRow = { _id: string; name: string };
 
-const emptyVariant = (): VariantRow => ({ printName: "", price: "", inStock: true, uploading: false, image: null });
+const newId = () => Math.random().toString(36).slice(2, 10);
 
-export default function AddProduct() {
-  const router = useRouter();
-  const [form, setForm] = useState({
-    title: "", brand: "", price: "", oldPrice: "",
-    category: "", subCategory: "", description: "", material: "",
-    inStock: true, featured: false,
-  });
+const inputStyle: CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid #ccc",
+  borderRadius: 6,
+  fontSize: 15,
+  boxSizing: "border-box",
+};
+
+const labelStyle: CSSProperties = {
+  display: "block",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#333",
+  margin: "14px 0 6px",
+};
+
+function chipStyle(on: boolean): CSSProperties {
+  return {
+    padding: "6px 14px",
+    borderRadius: 20,
+    border: on ? "2px solid #c2185b" : "1px solid #bbb",
+    background: on ? "#fde7f1" : "#fff",
+    color: on ? "#c2185b" : "#444",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+}
+
+const pinkBtn: CSSProperties = {
+  background: "#c2185b",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  padding: "12px 22px",
+  fontSize: 16,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const ghostBtn: CSSProperties = {
+  background: "#fff",
+  color: "#c2185b",
+  border: "1px solid #c2185b",
+  borderRadius: 6,
+  padding: "10px 16px",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const tinyBtn: CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "#c00",
+  fontSize: 12,
+  cursor: "pointer",
+  padding: 0,
+  marginTop: 4,
+};
+
+function toggleSize(list: string[], s: string): string[] {
+  return list.indexOf(s) >= 0 ? list.filter((x) => x !== s) : list.concat([s]);
+}
+
+function previewSrc(up: Uploaded): string {
+  if (up.url) return up.url;
+  return "https://cdn.sanity.io/images/" + PROJECT_ID + "/" + DATASET + "/" + up.assetId + "?w=200&h=240&fit=crop";
+}
+
+// ek design ka photo slot (Photo 1 / 2 / 3)
+function PhotoSlot(props: {
+  label: string;
+  up: Uploaded | null;
+  busy: boolean;
+  required: boolean;
+  onPick: (e: ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div style={{ width: 110 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "#333", marginBottom: 6 }}>{props.label}</div>
+      <label
+        style={{
+          display: "block",
+          width: 84,
+          height: 100,
+          border: "1px dashed #bbb",
+          borderRadius: 6,
+          cursor: "pointer",
+          overflow: "hidden",
+          background: "#fafafa",
+        }}
+      >
+        {props.up ? (
+          <img src={previewSrc(props.up)} alt={props.label} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : props.busy ? (
+          <span style={{ display: "block", textAlign: "center", marginTop: 40, fontSize: 11, color: "#888" }}>Uploading...</span>
+        ) : (
+          <span style={{ display: "block", textAlign: "center", marginTop: 40, fontSize: 11, color: "#888" }}>
+            {props.required ? "+ Photo" : "+ Optional"}
+          </span>
+        )}
+        <input type="file" accept="image/*" style={{ display: "none" }} onChange={props.onPick} />
+      </label>
+      {props.up ? (
+        <button type="button" onClick={props.onClear} style={tinyBtn}>
+          remove
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export default function AddCatalogProduct() {
+  const [cats, setCats] = useState<CatRow[]>([]);
+  const [subs, setSubs] = useState<CatRow[]>([]);
+  const [catsErr, setCatsErr] = useState(false);
+
+  const [title, setTitle] = useState("");
+  const [brand, setBrand] = useState("");
+  const [price, setPrice] = useState("");
+  const [oldPrice, setOldPrice] = useState("");
+  const [category, setCategory] = useState("");
+  const [subCategory, setSubCategory] = useState("");
   const [sizes, setSizes] = useState<string[]>([]);
-  const [highlights, setHighlights] = useState<string[]>([""]);
-  const [variants, setVariants] = useState<VariantRow[]>([]);
-  const [image, setImage] = useState<Uploaded | null>(null);
-  const [image2, setImage2] = useState<Uploaded | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [description, setDescription] = useState("");
+  const [material, setMaterial] = useState("");
+  const [highlights, setHighlights] = useState("");
+  const [featured, setFeatured] = useState(false);
+  const [inStock, setInStock] = useState(true);
+
+  const [designs, setDesigns] = useState<DesignRow[]>([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-  const [cats, setCats] = useState<{ _id: string; name: string; icon?: string }[]>([]);
-  const [subs, setSubs] = useState<{ _id: string; name: string }[]>([]);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [failed, setFailed] = useState<string[]>([]);
+  const [doneMsg, setDoneMsg] = useState("");
 
-  // auth guard
+  // categories + subcategories Sanity public API se load (naya category bhi khud aa jayega)
   useEffect(() => {
-    if (!isAdminLoggedIn()) router.replace("/admin/login");
-  }, [router]);
-
-  // categories load
-  useEffect(() => {
-    client.fetch(`*[_type=="category"] | order(name asc){_id,name,icon}`).then(setCats).catch(() => {});
+    const cq = encodeURIComponent('*[_type == "category"]{ _id, name } | order(name asc)');
+    fetch("https://" + PROJECT_ID + ".api.sanity.io/v1/data/query/" + DATASET + "?query=" + cq)
+      .then((r) => r.json())
+      .then((d) => setCats((d.result || []) as CatRow[]))
+      .catch(() => setCatsErr(true));
+    const sq = encodeURIComponent('*[_type == "subCategory"]{ _id, name } | order(name asc)');
+    fetch("https://" + PROJECT_ID + ".api.sanity.io/v1/data/query/" + DATASET + "?query=" + sq)
+      .then((r) => r.json())
+      .then((d) => setSubs((d.result || []) as CatRow[]))
+      .catch(() => {});
   }, []);
 
-  // subcategories jab category change ho
-  useEffect(() => {
-    if (!form.category) { setSubs([]); return; }
-    client
-      .fetch(`*[_type=="subCategory" && parentCategory._ref == $catId] | order(name asc){_id,name}`, { catId: form.category })
-      .then((d: { _id: string; name: string }[]) => {
-        setSubs(d || []);
-        setForm((f) => ({ ...f, subCategory: d && d.length ? d[0]._id : "" }));
-      })
-      .catch(() => setSubs([]));
-  }, [form.category]);
+  function setDesignField(id: string, patch: Partial<DesignRow>) {
+    setDesigns((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
 
   async function uploadImage(file: File): Promise<Uploaded> {
     const fd = new FormData();
+    fd.append("image", file);
     fd.append("file", file);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!res.ok) throw new Error("upload failed");
+    if (!res.ok) throw new Error("upload fail");
     const data = await res.json();
-    return { url: data.url, assetId: data.assetId };
+    const assetId = data.assetId || data.id || data._id || (data.asset && data.asset._id) || (data.document && data.document._id) || "";
+    const url = data.url || (data.asset && data.asset.url) || "";
+    if (!assetId) throw new Error("no assetId");
+    return { assetId: String(assetId), url: String(url) };
   }
 
-  async function handleMainImage(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function handleDesignPhoto(id: string, slot: number, e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
     if (!file) return;
-    setUploading(true); setError("");
-    try { setImage(await uploadImage(file)); } catch { setError("Image upload fail ho gayi"); } finally { setUploading(false); }
-  }
-
-  async function handleImage2(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true); setError("");
-    try { setImage2(await uploadImage(file)); } catch { setError("Image upload fail ho gayi"); } finally { setUploading(false); }
-  }
-
-  const updateVariant = (i: number, patch: Partial<VariantRow>) =>
-    setVariants((vs) => vs.map((v, j) => (j === i ? { ...v, ...patch } : v)));
-
-  async function handleVariantImage(i: number, e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    updateVariant(i, { uploading: true });
-    try {
-      const up = await uploadImage(file);
-      updateVariant(i, { image: up, uploading: false });
-    } catch {
-      updateVariant(i, { uploading: false });
+    if (slot === 1) {
+      setDesignField(id, { uploading: true });
+      uploadImage(file)
+        .then((up) => setDesignField(id, { uploading: false, image: up }))
+        .catch(() => { setDesignField(id, { uploading: false }); alert("Photo 1 upload fail — dobara try karo"); });
+    } else if (slot === 2) {
+      setDesignField(id, { uploading2: true });
+      uploadImage(file)
+        .then((up) => setDesignField(id, { uploading2: false, image2: up }))
+        .catch(() => { setDesignField(id, { uploading2: false }); alert("Photo 2 upload fail — dobara try karo"); });
+    } else {
+      setDesignField(id, { uploading3: true });
+      uploadImage(file)
+        .then((up) => setDesignField(id, { uploading3: false, image3: up }))
+        .catch(() => { setDesignField(id, { uploading3: false }); alert("Photo 3 upload fail — dobara try karo"); });
     }
   }
 
-  // ---- SEO helpers (live) ----
-  const titleLen = form.title.trim().length;
-  const descLen = form.description.trim().length;
-  const googleTitle = `${form.title || "Product ka naam"}${form.brand ? ` - ${form.brand}` : ""} | MultiBrand`;
-  const googleDesc = form.description.trim()
-    ? form.description.trim().slice(0, 158)
-    : "Description likho to yahan Google me ye text dikhega — 120+ characters best hai.";
-  const imgCount = 1 + (image2 ? 1 : 0) + variants.filter((v) => v.image).length;
+  async function handleBulkImages(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    const rows: DesignRow[] = files.map(() => ({
+      id: newId(), name: "", uploading: true, uploading2: false, uploading3: false,
+      image: null, image2: null, image3: null, sizes: [],
+    }));
+    setDesigns((prev) => prev.concat(rows));
+    const ups = await Promise.all(files.map((f) => uploadImage(f).catch(() => null)));
+    const okById = new Map<string, Uploaded>();
+    rows.forEach((r, i) => {
+      const u = ups[i];
+      if (u) okById.set(r.id, u);
+    });
+    setDesigns((prev) =>
+      prev
+        .filter((r) => okById.has(r.id) || !rows.some((x) => x.id === r.id))
+        .map((r) => {
+          const u = okById.get(r.id);
+          return u ? { ...r, uploading: false, image: u } : r;
+        })
+    );
+    const failCount = rows.length - okById.size;
+    if (failCount > 0) alert(failCount + " photo upload fail — unki row hata di gayi. Dobara try karo.");
+  }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(""); setSuccess(false);
-    if (!form.title.trim()) return setError("Product title zaroori hai");
-    if (!form.price) return setError("Price zaroori hai");
-    if (!form.category) return setError("Category select karein");
-    if (!image) return setError("Main image upload karein");
+  function addDesignRow() {
+    setDesigns((prev) => prev.concat([{
+      id: newId(), name: "", uploading: false, uploading2: false, uploading3: false,
+      image: null, image2: null, image3: null, sizes: [],
+    }]));
+  }
+
+  function removeDesign(id: string) {
+    setDesigns((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function applyTopSizes() {
+    setDesigns((prev) => prev.map((r) => ({ ...r, sizes: sizes })));
+  }
+
+  async function handleSubmit() {
+    if (saving) return;
+    if (!title.trim()) { alert("Catalog title likho"); return; }
+    if (!price.trim()) { alert("Price likho"); return; }
+    if (!category) { alert("Category select karo"); return; }
+    const rows = designs.filter((d) => d.image);
+    if (!rows.length) { alert("Kam az kam ek design ki Photo 1 upload karo"); return; }
+    const skipped = designs.length - rows.length;
+    if (skipped > 0 && !confirm(skipped + " design row me photo nahi hai — wo skip ho jayengi. Continue?")) return;
 
     setSaving(true);
-    try {
-      const payload: Record<string, unknown> = {
-        title: form.title.trim(),
-        price: Number(form.price),
-        category: form.category,
-        sizes,
-        inStock: form.inStock,
-        featured: form.featured,
-        image: image.assetId,
+    setFailed([]);
+    setDoneMsg("");
+    setProgress({ done: 0, total: rows.length });
+    const fails: string[] = [];
+    const failedIds: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const d = rows[i];
+      const suffix = d.name.trim() || "Design " + (i + 1);
+      const payload: { [k: string]: unknown } = {
+        title: title.trim() + " - " + suffix,
+        price: Number(price),
+        category: category,
+        sizes: d.sizes.length ? d.sizes : sizes,
+        inStock: inStock,
+        featured: featured,
+        image: d.image ? d.image.assetId : "",
       };
-      if (form.brand.trim()) payload.brand = form.brand.trim();
-      if (form.oldPrice && Number(form.oldPrice) > 0) payload.oldPrice = Number(form.oldPrice);
-      if (form.subCategory) payload.subCategory = form.subCategory;
-      if (form.description.trim()) payload.description = form.description.trim();
-      if (form.material.trim()) payload.material = form.material.trim();
-      const hs = highlights.map((h) => h.trim()).filter(Boolean);
-      if (hs.length) payload.highlights = hs;
-      const vs = variants
-        .filter((v) => v.printName.trim() && v.image)
-        .map((v) => ({
-          printName: v.printName.trim(),
-          image: v.image!.assetId,
-          inStock: v.inStock,
-          ...(v.price && Number(v.price) > 0 ? { price: Number(v.price) } : {}),
-        }));
-      if (vs.length) payload.variants = vs;
-      if (image2) payload.image2 = image2.assetId;
+      if (d.image2) payload.image2 = d.image2.assetId;
+      if (d.image3) payload.image3 = d.image3.assetId;
+      if (brand.trim()) payload.brand = brand.trim();
+      if (oldPrice.trim()) payload.oldPrice = Number(oldPrice);
+      if (subCategory) payload.subCategory = subCategory;
+      if (description.trim()) payload.description = description.trim();
+      if (material.trim()) payload.material = material.trim();
+      const hl = highlights.split("\n").map((s) => s.trim()).filter((s) => s.length > 0);
+      if (hl.length) payload.highlights = hl;
+      try {
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          let msg = "HTTP " + res.status;
+          const j = await res.json().catch(() => null);
+          if (j && j.error) msg = String(j.error);
+          throw new Error(msg);
+        }
+      } catch (err) {
+        const label = "Design " + (i + 1) + (d.name.trim() ? " (" + d.name.trim() + ")" : "");
+        fails.push(label + ": " + (err instanceof Error ? err.message : "fail"));
+        failedIds.push(d.id);
+      }
+      setProgress({ done: i + 1, total: rows.length });
+    }
 
-      const res = await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("save failed");
-
-      setSuccess(true);
-      setForm({ title: "", brand: "", price: "", oldPrice: "", category: form.category, subCategory: "", description: "", material: "", inStock: true, featured: false });
-      setSizes([]); setHighlights([""]); setVariants([]); setImage(null); setImage2(null);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch {
-      setError("Product save nahi hua. Dobara koshish karein.");
-    } finally {
-      setSaving(false);
+    setSaving(false);
+    // jo products save ho gaye unki rows hata do — sirf fail wali rows rehne do (dusra Save unhe hi retry karega)
+    setDesigns((prev) => prev.filter((r) => failedIds.indexOf(r.id) >= 0 || !rows.some((x) => x.id === r.id)));
+    if (failedIds.length) {
+      setFailed(fails);
+    } else {
+      setDoneMsg(rows.length + " products save ho gaye!");
+      setTitle(""); setPrice(""); setOldPrice(""); setBrand("");
+      setDescription(""); setMaterial(""); setHighlights(""); setSizes([]);
+      // category rehta hai — agla catalog same category me turant banao
     }
   }
 
+  const rowsCount = designs.filter((d) => d.image).length;
+  const firstRow = designs.filter((d) => d.image)[0];
+  const firstSuffix = firstRow ? (firstRow.name.trim() || "Design 1") : "Design 1";
+  const googleTitle = title.trim() ? title.trim() + " - " + firstSuffix + " | MultiBrand" : "";
+
   return (
-    <div className="min-h-screen bg-neutral-50 pb-16">
-      {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3">
-        <button onClick={() => router.back()} className="rounded-full p-1.5 hover:bg-neutral-100">
-          <ArrowLeft size={20} className="text-neutral-600" />
-        </button>
-        <h1 className="text-lg font-bold text-neutral-800">Add New Product</h1>
+    <div style={{ maxWidth: 780, margin: "0 auto", padding: 20 }}>
+      <h1 style={{ fontSize: 24 }}>Add Catalog Products</h1>
+      <p style={{ color: "#666", fontSize: 14, marginTop: -6 }}>
+        Ek catalog likho, har design ki photos do — har design ka apna product banega (title ke sath Design 1, Design 2...). Har design ke liye alag sizes aur Photo 2 / Photo 3 (optional) bhi de sakte ho.
+      </p>
+
+      {/* ===== 1) COMMON DETAILS ===== */}
+      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>1) Common details (sab products ke liye)</h2>
+
+        <label style={labelStyle}>Catalog Title *</label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Misal: 3 Piece Printed Lawn Suit Summer" style={inputStyle} />
+        {googleTitle ? (
+          <p style={{ color: "#666", fontSize: 13, margin: "6px 0 0" }}>
+            Google me pehla product aise dikhega: <b>{googleTitle}</b>
+          </p>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 130px" }}>
+            <label style={labelStyle}>Price (PKR) *</label>
+            <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="4500" inputMode="numeric" style={inputStyle} />
+          </div>
+          <div style={{ flex: "1 1 130px" }}>
+            <label style={labelStyle}>Old Price (optional)</label>
+            <input value={oldPrice} onChange={(e) => setOldPrice(e.target.value)} placeholder="6000" inputMode="numeric" style={inputStyle} />
+          </div>
+          <div style={{ flex: "1 1 130px" }}>
+            <label style={labelStyle}>Brand (optional)</label>
+            <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Gul Ahmed" style={inputStyle} />
+          </div>
+        </div>
+
+        <label style={labelStyle}>Category *</label>
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+          <option value="">— select —</option>
+          {cats.map((c) => (
+            <option key={c._id} value={c._id}>{c.name}</option>
+          ))}
+        </select>
+        {catsErr ? <p style={{ color: "#c00", fontSize: 13 }}>Categories load nahi hui — page refresh karo.</p> : null}
+
+        <label style={labelStyle}>Sub Category (optional)</label>
+        <select value={subCategory} onChange={(e) => setSubCategory(e.target.value)} style={inputStyle}>
+          <option value="">— koi nahi —</option>
+          {subs.map((s) => (
+            <option key={s._id} value={s._id}>{s.name}</option>
+          ))}
+        </select>
+
+        <label style={labelStyle}>Sizes (default — neeche har design me alag bhi kar sakte ho)</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {SIZE_OPTIONS.map((s) => (
+            <button key={s} type="button" onClick={() => setSizes(toggleSize(sizes, s))} style={chipStyle(sizes.indexOf(s) >= 0)}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <label style={labelStyle}>Description (optional — sab products same)</label>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={inputStyle} />
+
+        <label style={labelStyle}>Fabric / Material (optional)</label>
+        <input value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="Lawn" style={inputStyle} />
+
+        <label style={labelStyle}>Highlights (optional — har line ek point)</label>
+        <textarea value={highlights} onChange={(e) => setHighlights(e.target.value)} rows={3} placeholder={"Premium printed lawn\nShirt + dupatta"} style={inputStyle} />
+
+        <div style={{ display: "flex", gap: 24, marginTop: 14, flexWrap: "wrap" }}>
+          <label style={{ fontSize: 14 }}>
+            <input type="checkbox" checked={featured} onChange={(e) => setFeatured(e.target.checked)} /> Featured (home page)
+          </label>
+          <label style={{ fontSize: 14 }}>
+            <input type="checkbox" checked={inStock} onChange={(e) => setInStock(e.target.checked)} /> In Stock
+          </label>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="mx-auto max-w-2xl space-y-5 px-4 py-5">
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
-        {success && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            ✓ Product save ho gaya! Naya product add karne ke liye form khali kar diya gaya hai.
-          </div>
-        )}
+      {/* ===== 2) DESIGNS ===== */}
+      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>2) Designs (har design = 1 product)</h2>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "10px 0" }}>
+          <label style={ghostBtn}>
+            + Add photos (multiple)
+            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleBulkImages} />
+          </label>
+          <button type="button" onClick={addDesignRow} style={ghostBtn}>+ Khali row</button>
+          <button type="button" onClick={applyTopSizes} style={ghostBtn}>Sizes sab designs pe lagao</button>
+        </div>
 
-        {/* 1. BASIC INFO */}
-        <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-800">1. Basic Info</h2>
+        {designs.length === 0 ? (
+          <p style={{ color: "#888", fontSize: 14 }}>Abhi koi design nahi — upar photos select karo ya khali row banao.</p>
+        ) : null}
 
-          <div>
-            <label className={labelCls}>Product Title *</label>
-            <input className={inputCls} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Jaise: Embroidered Lawn 3 Piece Unstitched" />
-            <div className="mt-1 flex justify-between text-xs">
-              <span className="text-neutral-400">Google me 60 characters tak acha dikhta hai</span>
-              <span className={titleLen <= 60 ? "font-medium text-green-600" : titleLen <= 70 ? "text-amber-500" : "text-red-500"}>{titleLen}/60</span>
+        {designs.map((d, i) => (
+          <div key={d.id} style={{ border: "1px solid #e5e5e5", borderRadius: 8, padding: 12, marginBottom: 12, background: "#fcfcfc" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <b style={{ color: "#c2185b" }}>#{i + 1}</b>
+              <input
+                value={d.name}
+                onChange={(e) => setDesignField(d.id, { name: e.target.value })}
+                placeholder="Design name (optional) — khali = Design N"
+                style={{ ...inputStyle, flex: "1 1 200px", padding: "8px 10px" }}
+              />
+              <button type="button" onClick={() => removeDesign(d.id)} style={tinyBtn}>remove row</button>
             </div>
-          </div>
 
-          {/* BRAND — naya option */}
-          <div>
-            <label className={labelCls}>Brand Name</label>
-            <input className={inputCls} list="brand-list" value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} placeholder="Jaise: Khaadi, Sapphire, Gul Ahmed, Ramsha..." />
-            <datalist id="brand-list">
-              {BRAND_SUGGESTIONS.map((b) => <option key={b} value={b} />)}
-            </datalist>
-            <p className="mt-1 text-xs text-neutral-400">List se chuno YA apna brand naam likho — product page aur Google dono pe brand dikhega.</p>
-          </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10 }}>
+              <PhotoSlot label="Photo 1 (main)" up={d.image} busy={d.uploading} required={true} onPick={(e) => handleDesignPhoto(d.id, 1, e)} onClear={() => setDesignField(d.id, { image: null })} />
+              <PhotoSlot label="Photo 2 (optional)" up={d.image2} busy={d.uploading2} required={false} onPick={(e) => handleDesignPhoto(d.id, 2, e)} onClear={() => setDesignField(d.id, { image2: null })} />
+              <PhotoSlot label="Photo 3 (optional)" up={d.image3} busy={d.uploading3} required={false} onPick={(e) => handleDesignPhoto(d.id, 3, e)} onClear={() => setDesignField(d.id, { image3: null })} />
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Price (PKR) *</label>
-              <input className={inputCls} type="number" inputMode="numeric" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="4500" />
-            </div>
-            <div>
-              <label className={labelCls}>Old Price (Sale)</label>
-              <input className={inputCls} type="number" inputMode="numeric" value={form.oldPrice} onChange={(e) => setForm((f) => ({ ...f, oldPrice: e.target.value }))} placeholder="6000" />
-              <p className="mt-1 text-xs text-neutral-400">Sale hai to original price yahan — crossed price dikhega.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Category *</label>
-              <select className={inputCls} value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-                <option value="">Select category</option>
-                {cats.map((c) => <option key={c._id} value={c._id}>{c.icon ? `${c.icon} ` : ""}{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Sub Category</label>
-              <select className={inputCls} value={form.subCategory} onChange={(e) => setForm((f) => ({ ...f, subCategory: e.target.value }))} disabled={!subs.length}>
-                <option value="">{subs.length ? "Select" : "N/A"}</option>
-                {subs.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
-              </select>
-            </div>
-          </div>
-        </section>
-
-        {/* 2. IMAGES + VARIANTS */}
-        <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-800">2. Images</h2>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Main Image *</label>
-              {image ? (
-                <div className="relative">
-                  <img src={image.url} alt="main" className="h-36 w-full rounded-lg border object-cover" />
-                  <label className="absolute bottom-2 right-2 cursor-pointer rounded bg-white/90 px-2 py-1 text-xs hover:bg-white">
-                    Change
-                    <input type="file" accept="image/*" className="hidden" onChange={handleMainImage} />
-                  </label>
-                </div>
-              ) : (
-                <label className="flex h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-rose-300 bg-rose-50/50 hover:bg-rose-50">
-                  {uploading ? <Loader2 size={22} className="animate-spin text-rose-500" /> : <Upload size={22} className="text-rose-400" />}
-                  <span className="text-xs font-medium text-rose-500">{uploading ? "Uploading..." : "Tap to upload"}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleMainImage} />
-                </label>
-              )}
-            </div>
-            <div>
-              <label className={labelCls}>Hover Image (optional)</label>
-              {image2 ? (
-                <div className="relative">
-                  <img src={image2.url} alt="hover" className="h-36 w-full rounded-lg border object-cover" />
-                  <label className="absolute bottom-2 right-2 cursor-pointer rounded bg-white/90 px-2 py-1 text-xs hover:bg-white">
-                    Change
-                    <input type="file" accept="image/*" className="hidden" onChange={handleImage2} />
-                  </label>
-                </div>
-              ) : (
-                <label className="flex h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 hover:bg-neutral-100">
-                  {uploading ? <Loader2 size={22} className="animate-spin text-neutral-400" /> : <Upload size={22} className="text-neutral-400" />}
-                  <span className="text-xs font-medium text-neutral-500">{uploading ? "Uploading..." : "Tap to upload"}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImage2} />
-                </label>
-              )}
-            </div>
-          </div>
-
-          {/* VARIANTS — 10-12 similar designs */}
-          <div className="border-t border-dashed border-neutral-200 pt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div>
-                <label className={labelCls + " mb-0"}>Similar Designs / Prints</label>
-                <p className="text-xs text-neutral-400">1 product ke 10-12 designs — har design ka naam + photo (Khaadi style).</p>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#333", marginBottom: 6 }}>
+                Sizes (is design ke liye) — khali chhoro to upar wale default sizes use honge:
               </div>
-              <button type="button" onClick={() => setVariants([...variants, emptyVariant()])} className="flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700">
-                <Plus size={14} /> Add Design
-              </button>
-            </div>
-            <div className="space-y-3">
-              {variants.map((v, i) => (
-                <div key={i} className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-neutral-500">DESIGN #{i + 1}</span>
-                    <button type="button" onClick={() => setVariants(variants.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600"><Trash2 size={15} /></button>
-                  </div>
-                  <div className="flex gap-3">
-                    <label className="flex h-20 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border-2 border-dashed border-neutral-300 bg-white hover:border-rose-400">
-                      {v.uploading ? <Loader2 size={16} className="animate-spin text-rose-500" /> : v.image ? <img src={v.image.url} alt="" className="h-full w-full object-cover" /> : <Upload size={16} className="text-neutral-400" />}
-                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleVariantImage(i, e)} />
-                    </label>
-                    <div className="flex-1 space-y-2">
-                      <input className={inputCls} value={v.printName} onChange={(e) => updateVariant(i, { printName: e.target.value })} placeholder="Design ka naam (jaise: Navy Blue Floral)" />
-                      <div className="flex items-center gap-3">
-                        <input className={inputCls + " w-28"} type="number" inputMode="numeric" value={v.price} onChange={(e) => updateVariant(i, { price: e.target.value })} placeholder="Price (opt.)" />
-                        <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                          <input type="checkbox" checked={v.inStock} onChange={(e) => updateVariant(i, { inStock: e.target.checked })} className="accent-rose-600" />
-                          In Stock
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* 3. DETAILS (SEO) */}
-        <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-neutral-800">3. Details (SEO ke liye bohat important)</h2>
-
-          <div>
-            <label className={labelCls}>Description</label>
-            <textarea className={inputCls + " min-h-[110px]"} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Fabric kya hai, kitne pieces hain, embroidery ka style, wash care... (120+ characters likhein)" />
-            <div className="mt-1 flex justify-between text-xs">
-              <span className="text-neutral-400">Google ye text product page se padhta hai</span>
-              <span className={descLen >= 120 ? "font-medium text-green-600" : descLen > 0 ? "text-amber-500" : "text-red-500"}>{descLen} chars</span>
-            </div>
-          </div>
-
-          <div>
-            <label className={labelCls}>Highlights (key features)</label>
-            <div className="space-y-2">
-              {highlights.map((h, i) => (
-                <div key={i} className="flex gap-2">
-                  <input className={inputCls} value={h} onChange={(e) => setHighlights(highlights.map((x, j) => (j === i ? e.target.value : x)))} placeholder={i === 0 ? "Jaise: Premium embroidered lawn fabric" : "Aur ek feature..."} />
-                  {highlights.length > 1 && (
-                    <button type="button" onClick={() => setHighlights(highlights.filter((_, j) => j !== i))} className="shrink-0 rounded-lg border border-neutral-300 px-2.5 text-red-400 hover:text-red-600"><Trash2 size={15} /></button>
-                  )}
-                </div>
-              ))}
-              <button type="button" onClick={() => setHighlights([...highlights, ""])} className="flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700"><Plus size={13} /> Add feature</button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Material / Fabric</label>
-              <input className={inputCls} value={form.material} onChange={(e) => setForm((f) => ({ ...f, material: e.target.value }))} placeholder="Jaise: Lawn, Khaddar, Chiffon" />
-            </div>
-            <div>
-              <label className={labelCls}>Sizes</label>
-              <div className="flex flex-wrap gap-1.5 pt-1">
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {SIZE_OPTIONS.map((s) => (
-                  <button type="button" key={s} onClick={() => setSizes(sizes.includes(s) ? sizes.filter((x) => x !== s) : [...sizes, s])}
-                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${sizes.includes(s) ? "border-rose-600 bg-rose-600 text-white" : "border-neutral-300 bg-white text-neutral-600"}`}>{s}</button>
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDesignField(d.id, { sizes: toggleSize(d.sizes, s) })}
+                    style={{ ...chipStyle(d.sizes.indexOf(s) >= 0), padding: "4px 10px", fontSize: 12 }}
+                  >
+                    {s}
+                  </button>
                 ))}
               </div>
             </div>
           </div>
-        </section>
+        ))}
+      </div>
 
-        {/* 4. STATUS */}
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-neutral-800">4. Status</h2>
-          <div className="flex gap-3">
-            <button type="button" onClick={() => setForm((f) => ({ ...f, inStock: !f.inStock }))} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold ${form.inStock ? "border-green-300 bg-green-50 text-green-700" : "border-neutral-300 bg-neutral-100 text-neutral-500"}`}>
-              {form.inStock ? "✓ In Stock" : "Out of Stock"}
-            </button>
-            <button type="button" onClick={() => setForm((f) => ({ ...f, featured: !f.featured }))} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold ${form.featured ? "border-amber-300 bg-amber-50 text-amber-700" : "border-neutral-300 bg-neutral-100 text-neutral-500"}`}>
-              ★ Featured {form.featured ? "✓" : ""}
-            </button>
-          </div>
-        </section>
-
-        {/* 5. GOOGLE PREVIEW (live) */}
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-neutral-800">5. Google Preview (live)</h2>
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-            <p className="text-[13px] text-[#4d5156]">multibrandstore.vercel.app › product</p>
-            <p className="mt-0.5 line-clamp-1 text-[17px] leading-snug text-[#1a0dab]">{googleTitle}</p>
-            <p className="mt-1 line-clamp-2 text-[13px] text-[#4d5156]">{googleDesc}</p>
-          </div>
-          <p className="mt-2 text-xs text-neutral-400">Total images: {imgCount} · Aise hi tumhara product Google search me dikhega.</p>
-        </section>
-
-        <button type="submit" disabled={saving || uploading} className="w-full rounded-xl bg-rose-600 py-3.5 font-bold text-white hover:bg-rose-700 disabled:opacity-50">
-          {saving ? "Saving..." : "Save Product"}
+      {/* ===== 3) SAVE ===== */}
+      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16 }}>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={saving || rowsCount === 0}
+          style={{ ...pinkBtn, opacity: saving || rowsCount === 0 ? 0.5 : 1 }}
+        >
+          {saving ? "Saving " + progress.done + "/" + progress.total + "..." : "Save " + rowsCount + " Products"}
         </button>
-      </form>
 
-      <AdminFooter />
+        {saving ? (
+          <div style={{ background: "#eee", borderRadius: 6, height: 10, marginTop: 12 }}>
+            <div
+              style={{
+                background: "#c2185b",
+                height: 10,
+                borderRadius: 6,
+                width: (progress.total ? (progress.done / progress.total) * 100 : 0) + "%",
+              }}
+            />
+          </div>
+        ) : null}
+
+        {doneMsg ? <p style={{ color: "#080", fontWeight: 700, marginTop: 10 }}>{doneMsg}</p> : null}
+
+        {failed.length > 0 ? (
+          <div style={{ color: "#c00", marginTop: 10, fontSize: 14 }}>
+            <b>Save fail:</b>
+            <ul style={{ paddingLeft: 20 }}>
+              {failed.map((f, i) => (
+                <li key={i}>{f}</li>
+              ))}
+            </ul>
+            Fail rows upar baqi hain — API theek hone ke baad dobara Save dabao.
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
