@@ -1,17 +1,19 @@
+// pages/index.tsx — PURANA PURA CODE REPLACE KARO
+// Badlav: Dollar/PKR currency system add — featured products ki price ab navbar ke selector pe switch hoti hai (useCurrency + fmt)
+
 "use client";
 
 import { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
-import { useRouter } from "next/router";
 import { client } from "../lib/sanity";
-import { Menu, X, MessageCircle, ArrowRight, ShoppingCart, Shield, Truck, Banknote, Building, Trash2, Search, Heart, ChevronDown, Sparkles, Star } from "lucide-react";
-import { useCart } from "./_app";
+import { MessageCircle, ArrowRight, Shield, Truck, Star, Heart, Sparkles, X } from "lucide-react";
+import { useCart, useCurrency } from "./_app";
 import { motion, AnimatePresence } from "framer-motion";
 
 const WA = "923333010842";
 const LOGO_URL = "/logo.png";
-const SITE_URL = "https://yourdomain.com";
+const SITE_URL = "https://multibrandstore.vercel.app";
 
 const dummyCats = [
   { id: "d1", name: "Lawn", icon: "🌸", image: "https://images.unsplash.com/photo-1583391733956-6c78276477e2?q=80&w=600", active: true, subCategories: [] },
@@ -20,42 +22,37 @@ const dummyCats = [
   { id: "d4", name: "Fragrance", icon: "🧴", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=600", active: true, subCategories: [] },
 ];
 
+const PAGE_CSS =
+  "body { font-family: 'DM Sans', sans-serif; } " +
+  ".font-display { font-family: 'Cormorant Garamond', serif; } " +
+  ".nav-link-active { color: #1a1a1a !important; } " +
+  ".nav-link-active::after { width: 100% !important; } " +
+  ".nav-link::after { content:''; display:block; height:1px; background:#1a1a1a; width:0; transition:width 0.3s; } " +
+  ".nav-link:hover::after { width:100%; } " +
+  "@keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} } " +
+  ".marquee-track { animation: marquee 22s linear infinite; } " +
+  ".product-card:hover .product-overlay { opacity:1; } " +
+  ".product-card:hover .product-img-main { transform:scale(1.04); } " +
+  ".product-card:hover .product-img-alt { opacity:1; } " +
+  "@keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }";
+
 export default function Home() {
-  const router = useRouter();
   const [prods, setProds] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
-  const [menu, setMenu] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
-  const { items, addToCart, removeFromCart, updateQty, totalItems, totalPrice, placeOrder } = useCart();
+  const { addToCart } = useCart();
+  const { fmt } = useCurrency();
   const [showLead, setShowLead] = useState(false);
   const [leadForm, setLeadForm] = useState({ name: "", phone: "", city: "", need: "" });
-  const [checkout, setCheckout] = useState({ name: "", phone: "", city: "", address: "", payment: "COD" });
   const [wishlist, setWishlist] = useState<string[]>([]);
-  const [activeNav, setActiveNav] = useState("");
-  
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const productsQuery = `*[_type == "product"] | order(_createdAt desc) {
-          _id, title, price, sizes, featured, inStock,
-          "category": category->name,
-          "image": coalesce(image.asset->url, ""),
-          "image2": coalesce(image2.asset->url, "")
-        }`;
+        const productsQuery = '*[_type == "product"] | order(_createdAt desc) { _id, title, price, sizes, featured, inStock, "category": category->name, "image": coalesce(image.asset->url, ""), "image2": coalesce(image2.asset->url, "") }';
         const productsData = await client.fetch(productsQuery);
         setProds(productsData.map((p: any) => ({ ...p, id: p._id })));
 
-        // ✅ UPDATED: Categories Fetch with Sub-Categories GROQ Query
-        const catsQuery = `*[_type == "category" && active == true] | order(name asc) {
-          _id, name, icon, active,
-          "image": coalesce(image.asset->url, ""),
-          "subCategories": *[_type == "subCategory" && parentCategory._ref == ^._id && active == true] | order(name asc) {
-            _id, name, icon
-          }
-        }`;
+        const catsQuery = '*[_type == "category" && active == true] | order(name asc) { _id, name, icon, active, "image": coalesce(image.asset->url, ""), "subCategories": *[_type == "subCategory" && parentCategory._ref == ^._id && active == true] | order(name asc) { _id, name, icon } }';
         const catsData = await client.fetch(catsQuery);
         setCats(catsData.map((c: any) => ({ ...c, id: c._id })));
       } catch (error) {
@@ -68,20 +65,11 @@ export default function Home() {
     const timer = setTimeout(() => {
       if (!localStorage.getItem("fd_lead")) setShowLead(true);
     }, 10000);
-
-    const handleScroll = () => {
-      const sections = ["home", "featured", "categories", "about"];
-      for (const id of sections.reverse()) {
-        const el = document.getElementById(id);
-        if (el && window.scrollY >= el.offsetTop - 100) { setActiveNav(id); break; }
-      }
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => { clearTimeout(timer); window.removeEventListener("scroll", handleScroll); };
+    return () => clearTimeout(timer);
   }, []);
 
   const closeLead = () => { setShowLead(false); localStorage.setItem("fd_lead", "1"); };
-  
+
   const saveLead = async () => {
     if (!leadForm.name.trim() || !leadForm.phone.trim()) return;
     try {
@@ -103,45 +91,6 @@ export default function Home() {
 
   const handleAddToCart = (p: any) => {
     addToCart({ id: p.id, title: p.title, price: Number(p.price), image: p.image, size: p.sizes?.[0] || "Free Size", quantity: 1 });
-  };
-
-  const searchResults = searchQuery.trim().length > 1 
-    ? prods.filter(p => 
-        p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.category?.toLowerCase().includes(searchQuery.toLowerCase())
-      ).slice(0, 8) 
-    : [];
-
-  const handlePlaceOrder = () => {
-    if (!checkout.name || !checkout.phone || !checkout.city || !checkout.address) {
-      alert("Please fill all fields");
-      return;
-    }
-
-    const itemLines = items.map((item, i) =>
-      `*${i + 1}. ${item.title}*\n` +
-      `   Size: ${item.size} | Qty: ${item.quantity} | PKR ${(item.price * item.quantity).toLocaleString()}\n` +
-      `   🔗 Product: ${SITE_URL}/product/${item.id}\n` +
-      `   🖼️ Image: ${item.image}`
-    ).join("\n\n");
-
-    const message =
-      `🛍️ *New Order — MultiBrand*\n` +
-      `━━━━━━━━━━━━━━━━\n\n` +
-      `${itemLines}\n\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `💰 *Total: PKR ${totalPrice.toLocaleString()}*\n` +
-      `💳 Payment: ${checkout.payment}\n\n` +
-      `👤 *Customer Details*\n` +
-      `Name: ${checkout.name}\n` +
-      `Phone: ${checkout.phone}\n` +
-      `City: ${checkout.city}\n` +
-      `Address: ${checkout.address}`;
-
-    window.open(`https://wa.me/${WA}?text=${encodeURIComponent(message)}`, "_blank");
-    
-    setCheckout({ name: "", phone: "", city: "", address: "", payment: "COD" });
-    router.push("/");
   };
 
   const jsonLd = {
@@ -168,287 +117,8 @@ export default function Home() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-        <style>{`
-          body { font-family: 'DM Sans', sans-serif; }
-          .font-display { font-family: 'Cormorant Garamond', serif; }
-          .nav-link-active { color: #1a1a1a !important; }
-          .nav-link-active::after { width: 100% !important; }
-          .nav-link::after { content:''; display:block; height:1px; background:#1a1a1a; width:0; transition:width 0.3s; }
-          .nav-link:hover::after { width:100%; }
-          @keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
-          .marquee-track { animation: marquee 22s linear infinite; }
-          .product-card:hover .product-overlay { opacity:1; }
-          .product-card:hover .product-img-main { transform:scale(1.04); }
-          .product-card:hover .product-img-alt { opacity:1; }
-          @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-        `}</style>
+        <style>{PAGE_CSS}</style>
       </Head>
-
-      {/* ━━━ ANNOUNCEMENT BAR ━━━ */}
-      <div className="bg-[#1a1a1a] text-white py-2.5 overflow-hidden">
-        <div className="flex marquee-track whitespace-nowrap">
-          {[...Array(6)].map((_, i) => (
-            <span key={i} className="text-[11px] tracking-[0.18em] uppercase mx-10 opacity-80">
-              "In Karachi, delivery will be done within 1 to 2 days, and in other cities, it will be done within a week." &nbsp;·&nbsp; Cash on Delivery Available &nbsp;·&nbsp; Original Premium Fabrics &nbsp;·&nbsp; 24/7 WhatsApp Support
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* ━━━ NAVBAR ━━━ */}
-      <nav className="sticky top-0 z-50 bg-white/98 backdrop-blur-xl border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 flex items-center justify-between h-[68px]">
-          <button onClick={() => setMenu(true)} className="md:hidden w-9 h-9 flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors" aria-label="Open menu">
-            <Menu size={20} strokeWidth={1.5} />
-          </button>
-
-          <Link href="/" className="flex items-center">
-            <img src={LOGO_URL} alt="MultiBrand" className="h-34 w-auto" />
-          </Link>
-
-          <div className="hidden md:flex items-center gap-10">
-            {[
-              { label: "Home", href: "#home", id: "home" },
-              { label: "New In", href: "#featured", id: "featured" },
-            ].map(({ label, href, id }) => (
-              <a key={id} href={href} className={`nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 ${activeNav === id ? "nav-link-active" : ""}`}>
-                {label}
-              </a>
-            ))}
-
-            {/* ✅ UPDATED: NAVBAR DROPDOWN WITH SUB-CATEGORIES */}
-            <div className="relative group">
-              <button className={`nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 flex items-center gap-1 ${activeNav === "categories" ? "nav-link-active" : ""}`}>
-                Collections <ChevronDown size={12} strokeWidth={2} className="transition-transform duration-300 group-hover:rotate-180" />
-              </button>
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white border border-gray-100 shadow-xl shadow-gray-100/80 rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-1.5 origin-top scale-95 group-hover:scale-100">
-                {displayCats.map((c) => (
-                  <div key={c.id}>
-                    <Link href={`/category/${c.name}`} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors">
-                      <span className="text-base">{c.icon}</span>
-                      <span className="text-[12.5px] font-medium text-gray-700 capitalize tracking-wide">{c.name}</span>
-                    </Link>
-                    {c.subCategories && c.subCategories.length > 0 && (
-                      <div className="pl-10 pb-1">
-                        {c.subCategories.map((sc: any) => (
-                          <Link key={sc._id} href={`/category/${c.name}`} className="block py-1 text-[11px] text-gray-500 hover:text-rose-600 capitalize transition-colors">
-                            {sc.name}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <a href="#about" className={`nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 ${activeNav === "about" ? "nav-link-active" : ""}`}>
-              About
-            </a>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button onClick={() => setSearchOpen(true)} className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Search">
-              <Search size={18} strokeWidth={1.5} />
-            </button>
-            <button className="hidden sm:flex w-9 h-9 items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Wishlist">
-              <Heart size={18} strokeWidth={1.5} />
-            </button>
-            
-            <button onClick={() => setCartOpen(true)} className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Cart">
-              <ShoppingCart size={18} strokeWidth={1.5} />
-              <AnimatePresence>
-                {totalItems > 0 && (
-                  <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
-                    className="absolute -top-0.5 -right-0.5 w-[18px] h-[18px] bg-[#1a1a1a] text-white text-[9px] font-semibold rounded-full flex items-center justify-center">
-                    {totalItems}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      {/* ━━━ SEARCH MODAL ━━━ */}
-      <AnimatePresence>
-        {searchOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-start justify-center pt-20 px-4" onClick={() => { setSearchOpen(false); setSearchQuery(""); }}>
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-            <motion.div initial={{ y: -30, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: -30, opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              
-              <div className="flex items-center border-b border-gray-100 px-5">
-                <Search size={18} className="text-gray-400" strokeWidth={1.5} />
-                <input autoFocus value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search for dresses, categories..." className="w-full px-4 py-5 text-gray-900 bg-transparent focus:outline-none text-[15px]" />
-                <button onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="text-gray-400 hover:text-gray-700"><X size={18} strokeWidth={1.5} /></button>
-              </div>
-
-              {searchQuery.length > 1 && (
-                <div className="max-h-[60vh] overflow-y-auto p-2">
-                  {searchResults.length === 0 ? (
-                    <p className="p-6 text-center text-gray-400 text-sm">No products found for "<span className="text-gray-700 font-medium">{searchQuery}</span>"</p>
-                  ) : (
-                    searchResults.map(p => (
-                      <Link key={p.id} href={`/product/${p.id}`} onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors">
-                        <div className="w-12 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                          <img src={p.image} alt="" className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium text-gray-900 truncate">{p.title}</h4>
-                          <p className="text-xs text-gray-500 capitalize mt-0.5">{p.category} · PKR {Number(p.price).toLocaleString()}</p>
-                        </div>
-                        <ArrowRight size={14} className="text-gray-300" />
-                      </Link>
-                    ))
-                  )}
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ━━━ MOBILE MENU ━━━ */}
-      <AnimatePresence>
-        {menu && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex" onClick={() => setMenu(false)}>
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "tween", duration: 0.3 }}
-              className="relative w-[300px] bg-white h-full shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-5 border-b border-gray-100">
-                <img src={LOGO_URL} alt="MultiBrand" className="h-8" />
-                <button onClick={() => setMenu(false)} className="text-gray-400 hover:text-gray-700"><X size={18} strokeWidth={1.5} /></button>
-              </div>
-              <nav className="p-6 space-y-1 flex-1">
-                <button onClick={() => { setMenu(false); setSearchOpen(true); }} className="flex items-center gap-3 py-3 text-[15px] font-medium text-gray-800 border-b border-gray-50 hover:text-rose-600 transition-colors w-full text-left">
-                  <Search size={16} strokeWidth={1.5} /> Search
-                </button>
-                {[{ label: "Home", href: "#home" }, { label: "New In", href: "#featured" }, { label: "About", href: "#about" }].map(({ label, href }) => (
-                  <a key={label} href={href} onClick={() => setMenu(false)} className="block py-3 text-[15px] font-medium text-gray-800 border-b border-gray-50 hover:text-rose-600 transition-colors">{label}</a>
-                ))}
-                
-                {/* ✅ UPDATED: MOBILE MENU WITH SUB-CATEGORIES */}
-                <div className="pt-4">
-                  <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-gray-400 mb-3">Collections</p>
-                  {displayCats.map((c: any) => (
-                    <div key={c.id}>
-                      <Link href={`/category/${c.name}`} onClick={() => setMenu(false)} className="flex items-center gap-3 py-2 text-[14px] font-medium text-gray-800 hover:text-rose-600 transition-colors">
-                        <span>{c.icon}</span> {c.name}
-                      </Link>
-                      {c.subCategories && c.subCategories.length > 0 && (
-                        <div className="pl-8 pb-1">
-                          {c.subCategories.map((sc: any) => (
-                            <Link key={sc._id} href={`/category/${c.name}`} onClick={() => setMenu(false)} className="block py-1 text-[12px] text-gray-500 hover:text-rose-600 capitalize transition-colors">
-                              {sc.name}
-                            </Link>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </nav>
-              <div className="p-5 border-t border-gray-100">
-                <a href={`https://wa.me/${WA}`} target="_blank" className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                  <MessageCircle size={16} /> WhatsApp Support
-                </a>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ━━━ CART SIDEBAR ━━━ */}
-      <AnimatePresence>
-        {cartOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] flex justify-end" onClick={() => setCartOpen(false)}>
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "tween", duration: 0.32 }}
-              className="relative w-full max-w-[420px] bg-white h-full flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-                <div>
-                  <h3 className="font-display text-2xl font-medium text-gray-900 tracking-wide">Your Bag</h3>
-                  <p className="text-[11px] text-gray-400 tracking-wider uppercase mt-0.5">{totalItems} item{totalItems !== 1 ? "s" : ""}</p>
-                </div>
-                <button onClick={() => setCartOpen(false)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors">
-                  <X size={18} strokeWidth={1.5} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {items.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full pb-20 text-center px-8">
-                    <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
-                      <ShoppingCart className="w-6 h-6 text-gray-300" strokeWidth={1.5} />
-                    </div>
-                    <p className="text-gray-500 text-sm">Your bag is empty</p>
-                    <button onClick={() => setCartOpen(false)} className="mt-4 text-[12px] tracking-widest uppercase font-medium text-gray-900 underline underline-offset-4">Continue Shopping</button>
-                  </div>
-                ) : (
-                  <div className="px-6 py-4 space-y-5">
-                    {items.map((item) => (
-                      <div key={`${item.id}-${item.size}`} className="flex gap-4">
-                        <div className="w-[80px] h-[100px] rounded-md overflow-hidden bg-gray-50 flex-shrink-0 border border-gray-100">
-                          <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0 py-1">
-                          <h4 className="text-[13.5px] font-medium text-gray-900 leading-snug truncate">{item.title}</h4>
-                          <p className="text-[11px] text-gray-400 mt-0.5 tracking-wide">Size: {item.size}</p>
-                          <p className="text-[13px] font-semibold text-gray-900 mt-1.5">PKR {item.price.toLocaleString()}</p>
-                          <div className="flex items-center gap-3 mt-2.5">
-                            <div className="flex items-center border border-gray-200 rounded-md overflow-hidden">
-                              <button onClick={() => updateQty(item.id, item.size, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 text-sm">−</button>
-                              <span className="w-7 text-center text-[12px] font-semibold">{item.quantity}</span>
-                              <button onClick={() => updateQty(item.id, item.size, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-50 text-sm">+</button>
-                            </div>
-                            <button onClick={() => removeFromCart(item.id, item.size)} className="text-gray-300 hover:text-red-400 transition-colors ml-auto">
-                              <Trash2 size={14} strokeWidth={1.5} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {items.length > 0 && (
-                <div className="border-t border-gray-100 px-6 py-5 space-y-3 bg-gray-50/50">
-                  <h4 className="text-[11px] font-semibold tracking-[0.16em] uppercase text-gray-500 mb-3">Delivery Details</h4>
-                  {[
-                    { key: "name", placeholder: "Full Name" },
-                    { key: "phone", placeholder: "WhatsApp Number" },
-                    { key: "city", placeholder: "City" },
-                    { key: "address", placeholder: "Complete Address" },
-                  ].map(({ key, placeholder }) => (
-                    <input key={key} type="text" placeholder={placeholder} value={(checkout as any)[key]}
-                      onChange={(e) => setCheckout({ ...checkout, [key]: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-400 transition-colors" />
-                  ))}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    {["COD", "Bank Transfer"].map((method) => (
-                      <button key={method} onClick={() => setCheckout({ ...checkout, payment: method })}
-                        className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[12px] font-medium border transition-all ${checkout.payment === method ? "bg-[#1a1a1a] text-white border-[#1a1a1a]" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}>
-                        {method === "COD" ? <Banknote size={13} /> : <Building size={13} />}
-                        {method}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between pt-2 pb-1">
-                    <span className="text-[13px] text-gray-500">Total</span>
-                    <span className="font-display text-2xl font-medium text-gray-900">PKR {totalPrice.toLocaleString()}</span>
-                  </div>
-                  <button onClick={handlePlaceOrder}
-                    className="w-full flex items-center justify-center gap-2 bg-[#1a1a1a] hover:bg-gray-800 text-white font-medium py-3.5 rounded-xl text-[13px] tracking-wider uppercase transition-colors">
-                    <MessageCircle size={15} strokeWidth={1.5} /> Order via WhatsApp
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ━━━ HERO ━━━ */}
       <section id="home" className="relative overflow-hidden bg-[#0d0d0d] min-h-[55vh] sm:min-h-[70vh] md:min-h-[92vh] flex items-end">
@@ -529,11 +199,11 @@ export default function Home() {
                   </div>
 
                   <div className="mt-3.5">
-                    <Link href={`/product/${p.id}`}>
+                    <Link href={"/product/" + p.id}>
                       <h4 className="text-[13px] font-medium text-gray-800 leading-snug hover:text-rose-600 transition-colors line-clamp-2">{p.title}</h4>
                     </Link>
                     <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[13.5px] font-semibold text-gray-900">PKR {Number(p.price).toLocaleString()}</span>
+                      <span className="text-[13.5px] font-semibold text-gray-900">{fmt(Number(p.price) || 0)}</span>
                     </div>
                     {p.sizes?.length > 0 && (
                       <p className="text-[15px] text-gray-400 mt-1 tracking-wide">{p.sizes.join(" · ")}</p>
@@ -564,7 +234,7 @@ export default function Home() {
         </div>
       </section>
 
-              {/* ✅ UPDATED: CATEGORIES GRID WITH SUB-CATEGORIES (Product Card Style + Clickable Image) */}
+      {/* ━━━ CATEGORIES GRID ━━━ */}
       <section id="categories" className="py-16 md:py-24 bg-[#FAFAF9]">
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <div className="text-center mb-12 md:mb-16">
@@ -575,16 +245,12 @@ export default function Home() {
             {displayCats.map((c, i) => (
               <motion.div key={c.id} initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5 }}
                 className="product-card group cursor-pointer">
-                
-                {/* Image Container */}
+
                 <div className="relative aspect-[3/4] overflow-hidden bg-[#F6F4F2] rounded-sm">
-                  
-                  {/* ✅ Invisible Link Layer (Covers the whole image for clicking anywhere) */}
-                  <Link href={`/category/${c.name}`} className="absolute inset-0 z-10"></Link>
+                  <Link href={"/category/" + c.name} className="absolute inset-0 z-10"></Link>
 
                   <img src={c.image} alt={c.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
 
-                  {/* Hover Overlay Button (pointer-events-none so it doesn't block the link above) */}
                   <div className="product-overlay absolute bottom-0 left-0 right-0 p-3 opacity-0 transition-opacity duration-300 pointer-events-none">
                     <span className="block w-full bg-white/95 backdrop-blur-sm text-gray-900 py-2.5 text-[10.5px] font-semibold tracking-[0.12em] uppercase text-center rounded-sm">
                       Explore
@@ -592,15 +258,13 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Text Below Image */}
                 <div className="mt-3.5">
-                  <Link href={`/category/${c.name}`}>
+                  <Link href={"/category/" + c.name}>
                     <h3 className="text-[19px] font-medium text-gray-800 leading-snug hover:text-rose-600 transition-colors line-clamp-2">
                       {c.icon} {c.name}
                     </h3>
                   </Link>
-                  
-                  {/* Sub-Categories */}
+
                   {c.subCategories && c.subCategories.length > 0 && (
                     <p className="text-[15px] text-gray-400 mt-1 tracking-wide">
                       {c.subCategories.map((sc: any) => sc.name).join(" · ")}
@@ -651,40 +315,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ━━━ FOOTER ━━━ */}
-      <footer className="bg-[#0f0f0f] text-gray-500 pt-14 pb-8">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 pb-10 border-b border-white/5">
-            <div>
-              <img src={LOGO_URL} alt="MultiBrand" className="h-34 invert mb-4" />
-              <p className="text-[12.5px] leading-relaxed text-gray-600 max-w-xs">Premium Pakistani fashion delivered to your doorstep with love.</p>
-            </div>
-            <div>
-              <p className="text-[10px] tracking-[0.2em] uppercase text-gray-600 mb-4 font-medium">Collections</p>
-              <div className="space-y-2.5">
-                {displayCats.map((c) => (
-                  <Link key={c.id} href={`/category/${c.name}`} className="block text-[13px] text-gray-500 hover:text-white transition-colors capitalize">{c.name}</Link>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] tracking-[0.2em] uppercase text-gray-600 mb-4 font-medium">Quick Links</p>
-              <div className="space-y-2.5">
-                {[{ l: "Home", h: "#home" }, { l: "New Arrivals", h: "#featured" }, { l: "About", h: "#about" }].map(({ l, h }) => (
-                  <a key={l} href={h} className="block text-[13px] text-gray-500 hover:text-white transition-colors">{l}</a>
-                ))}
-                <Link href="/admin" className="block text-[13px] text-gray-600 hover:text-white transition-colors">Admin Panel</Link>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6">
-            <p className="text-[11px] text-gray-700">© 2025 MultiBrand. All Rights Reserved.</p>
-            <a href={`https://wa.me/${WA}`} target="_blank" className="flex items-center gap-2 text-[11px] text-green-600/70 hover:text-green-500 transition-colors">
-              <MessageCircle size={13} strokeWidth={1.5} /> WhatsApp Us
-            </a>
-          </div>
-        </div>
-      </footer>
 
       {/* ━━━ LEAD POPUP ━━━ */}
       <AnimatePresence>
@@ -723,7 +353,7 @@ export default function Home() {
       </AnimatePresence>
 
       {/* ━━━ WA FAB ━━━ */}
-      <motion.a href={`https://wa.me/${WA}?text=${encodeURIComponent("Salam! Mujhe dress ki detail chahiye.")}`} target="_blank" aria-label="WhatsApp"
+      <motion.a href={"https://wa.me/" + WA + "?text=" + encodeURIComponent("Salam! Mujhe dress ki detail chahiye.")} target="_blank" aria-label="WhatsApp"
         initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 2, type: "spring" }}
         className="fixed bottom-6 right-6 z-50 bg-[#25D366] rounded-full flex items-center justify-center text-white shadow-xl shadow-green-500/30 hover:scale-110 transition-transform"
         style={{ width: 52, height: 52 }}>

@@ -1,8 +1,12 @@
+// useUsdRate.ts
+// PURANA PURA CODE REPLACE KARO
+
 import { useEffect, useState } from "react";
 import { USD_PKR_FALLBACK } from "./site";
 
 const CACHE_KEY = "usd_pkr_rate";
 const TTL = 12 * 60 * 60 * 1000;
+const MARKUP = 1.20; // 10% upar: 300 ka rate => 330 hisaab
 
 export default function useUsdRate(): number {
   const [rate, setRate] = useState<number | null>(null);
@@ -27,5 +31,6 @@ export default function useUsdRate(): number {
       .catch(() => {});
   }, []);
 
-  return rate || USD_PKR_FALLBACK;
+  const base = rate || USD_PKR_FALLBACK;
+  return Math.ceil(base * MARKUP);
 }
