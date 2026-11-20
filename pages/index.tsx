@@ -1,5 +1,17 @@
 // pages/index.tsx — PURANA PURA CODE REPLACE KARO
-// Badlav: Dollar/PKR currency system add — featured products ki price ab navbar ke selector pe switch hoti hai (useCurrency + fmt)
+// Badlav:
+// 1. Category tiles ke links ab slugified hain (/category/embroidered-lawn type) —
+//    404 khatam, naya pages/category/[name].tsx page khulta hai
+// 2. Subcategory ke naam bhi ab clickable links hain (/category/<cat>/<sub>)
+// 3. Featured product cards ki IMAGE ab bhi clickable hai — product page khulta hai
+// 4. Signature Silk banner ka link ab /category/silk (chalta hai)
+// 5. Currency system waise hi hai (useCurrency + fmt)
+// 6. NAYA: Featured product cards pe SHARE BUTTON (image ke upar, top-right me
+//    heart ke bagal me). Mobile pe native share sheet (WhatsApp bhi isi me),
+//    desktop pe link copy + 1.5 sec green button + "Link Copied!" chip.
+//    Share click se product page NAHI khulta — sirf share hota hai.
+//    NOTE: yahan ProductCard component use NAHI ho raha (cards inline hain),
+//    is liye share button yahan alag se add kiya gaya hai.
 
 "use client";
 
@@ -7,7 +19,7 @@ import { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import { client } from "../lib/sanity";
-import { MessageCircle, ArrowRight, Shield, Truck, Star, Heart, Sparkles, X } from "lucide-react";
+import { MessageCircle, ArrowRight, Shield, Truck, Star, Heart, Sparkles, X, Share2, Check } from "lucide-react";
 import { useCart, useCurrency } from "./_app";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -21,6 +33,12 @@ const dummyCats = [
   { id: "d3", name: "Silk", icon: "👗", image: "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600", active: true, subCategories: [] },
   { id: "d4", name: "Fragrance", icon: "🧴", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=600", active: true, subCategories: [] },
 ];
+
+// Category/subcategory ka naam clean URL slug banata hai:
+// "embroidered lawn" -> "embroidered-lawn", "co'ords" -> "coords"
+function slugify(s: string): string {
+  return s.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-");
+}
 
 const PAGE_CSS =
   "body { font-family: 'DM Sans', sans-serif; } " +
@@ -44,6 +62,8 @@ export default function Home() {
   const [showLead, setShowLead] = useState(false);
   const [leadForm, setLeadForm] = useState({ name: "", phone: "", city: "", need: "" });
   const [wishlist, setWishlist] = useState<string[]>([]);
+  // NAYA: kis card ka link copy hua hai (green button + chip usi card pe dikhega)
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -91,6 +111,53 @@ export default function Home() {
 
   const handleAddToCart = (p: any) => {
     addToCart({ id: p.id, title: p.title, price: Number(p.price), image: p.image, size: p.sizes?.[0] || "Free Size", quantity: 1 });
+  };
+
+  // ━━━ NAYA: SHARE HANDLER ━━━
+  // e.preventDefault() + e.stopPropagation() zaroori hain — warna card ka
+  // <Link> chal par jayega aur share ke bajaye product page khul jayega.
+  // STEP 1 - native share sheet (mobile; WhatsApp isi list me hota hai)
+  // STEP 2 - clipboard copy (desktop) + 1.5 sec "Link Copied!" feedback
+  // STEP 3 - purana fallback agar clipboard API block ho
+  const handleShare = async (e: any, p: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!p.id) return;
+    const url = window.location.origin + "/product/" + p.id;
+
+    if (typeof navigator !== "undefined" && typeof (navigator as any).share === "function") {
+      try {
+        await (navigator as any).share({ title: p.title || "MultiBrand", url });
+        return;
+      } catch (err: any) {
+        if (err && err.name === "AbortError") return;
+        // share fail hua — neechy clipboard pe gir jao
+      }
+    }
+
+    const showCopied = function () {
+      setCopiedId(p.id);
+      window.setTimeout(function () {
+        setCopiedId(null);
+      }, 1500);
+    };
+    try {
+      await navigator.clipboard.writeText(url);
+      showCopied();
+      return;
+    } catch {}
+
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      showCopied();
+    } catch {}
   };
 
   const jsonLd = {
@@ -173,13 +240,26 @@ export default function Home() {
                 <motion.div key={p.id} initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5 }}
                   className="product-card group cursor-pointer">
                   <div className="relative aspect-[3/4] overflow-hidden bg-[#F6F4F2] rounded-sm">
+                    {/* Pura image clickable — click karne pe product page khulta hai */}
+                    <Link href={"/product/" + p.id} className="absolute inset-0 z-10" aria-label={p.title}></Link>
                     <img src={p.image} alt={p.title} className="product-img-main w-full h-full object-cover transition-transform duration-700" />
                     {p.image2 && (
                       <img src={p.image2} alt="" className="product-img-alt absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500" />
                     )}
 
-                    <button onClick={(e) => { e.preventDefault(); toggleWishlist(p.id); }}
-                      className="absolute top-3 right-3 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-sm">
+                    {/* ━━━ NAYA: SHARE BUTTON — hamesha visible (mobile-friendly), heart ke bagal me ━━━ */}
+                    <button onClick={(e) => handleShare(e, p)}
+                      className={"absolute top-3 right-12 z-20 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 shadow-sm " +
+                        (copiedId === p.id ? "bg-green-600 text-white" : "bg-white/90 text-gray-700 hover:text-gray-900")}
+                      aria-label="Share product" title="Share">
+                      {copiedId === p.id ? <Check size={14} strokeWidth={2.5} /> : <Share2 size={14} strokeWidth={1.5} />}
+                    </button>
+                    {copiedId === p.id && (
+                      <span className="absolute top-12 right-3 z-20 bg-gray-900 text-white text-[9px] font-semibold tracking-wide px-2 py-1 rounded-full">Link Copied!</span>
+                    )}
+
+                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleWishlist(p.id); }}
+                      className="absolute top-3 right-3 z-20 w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-sm">
                       <Heart size={14} strokeWidth={1.5} className={wishlist.includes(p.id) ? "fill-rose-500 stroke-rose-500" : "stroke-gray-600"} />
                     </button>
 
@@ -189,9 +269,9 @@ export default function Home() {
                       )}
                     </div>
 
-                    <div className="product-overlay absolute bottom-0 left-0 right-0 p-3 opacity-0 transition-opacity duration-300">
+                    <div className="product-overlay absolute bottom-0 left-0 right-0 z-20 p-3 opacity-0 transition-opacity duration-300">
                       <button disabled={p.inStock === false}
-                        onClick={(e) => { e.preventDefault(); handleAddToCart(p); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToCart(p); }}
                         className="w-full bg-white/95 backdrop-blur-sm text-gray-900 py-2.5 text-[10.5px] font-semibold tracking-[0.12em] uppercase hover:bg-[#1a1a1a] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-sm">
                         {p.inStock === false ? "Sold Out" : "Add to Bag"}
                       </button>
@@ -227,7 +307,7 @@ export default function Home() {
             <h3 className="font-display text-3xl sm:text-5xl font-light text-white mt-2 leading-tight">
               Signature <em>Silk</em><br />Collection
             </h3>
-            <Link href="/category/Silk" className="inline-flex items-center gap-2 mt-6 text-[11.5px] tracking-[0.18em] uppercase font-medium text-white border-b border-white/40 pb-0.5 hover:border-rose-400 hover:text-rose-300 transition-colors">
+            <Link href="/category/silk" className="inline-flex items-center gap-2 mt-6 text-[11.5px] tracking-[0.18em] uppercase font-medium text-white border-b border-white/40 pb-0.5 hover:border-rose-400 hover:text-rose-300 transition-colors">
               Explore Now <ArrowRight size={12} />
             </Link>
           </motion.div>
@@ -247,7 +327,7 @@ export default function Home() {
                 className="product-card group cursor-pointer">
 
                 <div className="relative aspect-[3/4] overflow-hidden bg-[#F6F4F2] rounded-sm">
-                  <Link href={"/category/" + c.name} className="absolute inset-0 z-10"></Link>
+                  <Link href={"/category/" + slugify(c.name)} className="absolute inset-0 z-10" aria-label={c.name}></Link>
 
                   <img src={c.image} alt={c.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
 
@@ -259,7 +339,7 @@ export default function Home() {
                 </div>
 
                 <div className="mt-3.5">
-                  <Link href={"/category/" + c.name}>
+                  <Link href={"/category/" + slugify(c.name)}>
                     <h3 className="text-[19px] font-medium text-gray-800 leading-snug hover:text-rose-600 transition-colors line-clamp-2">
                       {c.icon} {c.name}
                     </h3>
@@ -267,7 +347,14 @@ export default function Home() {
 
                   {c.subCategories && c.subCategories.length > 0 && (
                     <p className="text-[15px] text-gray-400 mt-1 tracking-wide">
-                      {c.subCategories.map((sc: any) => sc.name).join(" · ")}
+                      {c.subCategories.map((sc: any, idx: number) => (
+                        <span key={sc._id || idx}>
+                          {idx > 0 ? " · " : ""}
+                          <Link href={"/category/" + slugify(c.name) + "/" + slugify(sc.name)} className="hover:text-gray-600 transition-colors">
+                            {sc.name}
+                          </Link>
+                        </span>
+                      ))}
                     </p>
                   )}
                 </div>

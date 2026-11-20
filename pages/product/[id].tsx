@@ -1,6 +1,9 @@
 // pages/product/[id].tsx — PURANA PURA CODE REPLACE KARO
-// Naya: Related + You May Also Like ke cards ab ProductCard component se —
-// hover pe dusri photo + discount % badge + old price + out-of-stock badge automatic
+// Change: MAIN IMAGE ki height cap — bohat tall photos (jaise 704x1521) ab
+// 680px se ziada lambi nahi banti. objectFit cover + objectPosition top:
+// photo stretch nahi hoti, sirf neeche ka extra hissa crop hota hai aur
+// model ka face hamesha visible rehta hai. Normal / 4:5 images par zero asar.
+// Baqi sab (currency toggle, ProductSEO, WhatsApp, related cards) same hai.
 
 import type { GetStaticPaths, GetStaticProps } from "next";
 import type { CSSProperties } from "react";
@@ -8,9 +11,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { sanityFetch, imgURL, type Product, type Variant } from "../../lib/client";
 import { SITE_URL, SITE_NAME, slugify } from "../../lib/site";
-import { useCart } from "../../pages/_app";
+import { useCart, useCurrency } from "../../pages/_app";
 import ProductSEO from "../../components/ProductSEO";
-import PricePKRUSD from "../../components/PricePKRUSD";
 import ProductCard from "../../components/ProductCard";
 
 // Queries single-quote me hain — copy/paste safe
@@ -61,6 +63,9 @@ export default function ProductPage({ product, related, others }: { product: Pro
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const { addToCart } = useCart();
+  // CURRENCY: header toggle se currency change hoti hai to fmt naya format
+  // de deta hai aur yeh page foran re-render ho kar naya price dikhata hai
+  const { fmt } = useCurrency();
   if (!product) return null;
 
   const variants: Variant[] = product.variants || [];
@@ -83,6 +88,8 @@ export default function ProductPage({ product, related, others }: { product: Pro
     setTimeout(() => setAdded(false), 3000);
   };
 
+  // WhatsApp order hamesha PKR total me jata hai — customer ko PKR me pay karna hai,
+  // USD sirf website display ke liye hai
   const handleWhatsAppOrder = () => {
     const total = Number(price) * qty;
     const message =
@@ -103,7 +110,19 @@ export default function ProductPage({ product, related, others }: { product: Pro
   return (
     <>
       {/* SEO: poora <head> + Google Product schema */}
-      <ProductSEO product={product} />
+      <ProductSEO
+        product={{
+          ...product,
+          brand: product.brand ?? undefined,
+          oldPrice: product.oldPrice ?? undefined,
+          description: product.description ?? undefined,
+          imgRef: product.imgRef ?? undefined,
+          img2Ref: product.img2Ref ?? undefined,
+          img3Ref: product.img3Ref ?? undefined,
+          cat: product.cat ?? undefined,
+          sub: product.sub ?? undefined,
+        }}
+      />
 
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: 20 }}>
         <nav style={{ fontSize: 14, color: "#777", marginBottom: 16 }}>
@@ -120,7 +139,7 @@ export default function ProductPage({ product, related, others }: { product: Pro
               alt={product.title + (shownLabel ? " – " + shownLabel : "") + " – " + (product.cat || "") + " – " + SITE_NAME}
               width={900}
               height={1100}
-              style={{ width: "100%", height: "auto", borderRadius: 8, display: "block" }}
+              style={{ width: "100%", height: "auto", maxHeight: 680, objectFit: "cover", objectPosition: "top", borderRadius: 8, display: "block" }}
             />
 
             {hasThumbs && (
@@ -192,11 +211,12 @@ export default function ProductPage({ product, related, others }: { product: Pro
               </p>
             ) : null}
 
+            {/* PRICE — fmt har currency ka sahi format deta hai, toggle pe live change hota hai */}
             <p style={{ fontSize: 20 }}>
-              <PricePKRUSD pkr={price} />
+              {fmt(Number(price || 0))}
               {product.oldPrice ? (
                 <del style={{ color: "#999", marginLeft: 10, fontWeight: 400 }}>
-                  PKR {Number(product.oldPrice).toLocaleString("en-PK")}
+                  {fmt(Number(product.oldPrice))}
                 </del>
               ) : null}
             </p>

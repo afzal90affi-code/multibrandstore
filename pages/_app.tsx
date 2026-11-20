@@ -1,6 +1,17 @@
 // pages/_app.tsx — PURANA PURA CODE REPLACE KARO
 // Naya: PKR/USD currency selector (poori site) + Navbar/Footer global (admin pe hidden)
 // Naya 2: USD rate ab live useUsdRate hook se aata hai (markup included) — fixed 280 hata diya
+//
+// IS FILE KI 3 ZAROORI DEPENDENCIES:
+//   1) components/Footer.tsx — global footer file (design wahi jo pages me inline tha).
+//      Yeh file na ho to import fail hoga.
+//   2) lib/site.ts me USD_PKR_FALLBACK export hona chahiye (useUsdRate import karta hai),
+//      warna build error: "USD_PKR_FALLBACK" not found.
+//   3) lib/useUsdRate.ts me FIXED version laga ho (rate ÷ 1.20 wala) — warna dollar
+//      price 20% upar ke bajaye 20% NEECHE dikhegi.
+//
+// PAGES KA RULE: ab kisi page ke andar <Navbar />, <Footer /> ya inline <footer>
+// nahi hona chahiye — dono _app.tsx se globally aate hain (admin pe hidden).
 
 "use client"
 
@@ -127,6 +138,8 @@ export const CurrencyProvider = ({ children }: { children: ReactNode }) => {
   }
 
   // PKR amount ko selected currency ki string bana deta hai
+  // USD = PKR / rate — is liye useUsdRate ka FIXED (÷ 1.20) version zaroori hai:
+  // PKR 18,000 => $72 (fair $60 + 20% upar)
   const fmt = (pkr: number) => {
     const n = Number(pkr || 0);
     if (currency === "USD") return "$" + (n / rate).toLocaleString("en-US", { maximumFractionDigits: 2 });

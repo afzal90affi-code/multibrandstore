@@ -1,327 +1,514 @@
-// components/Navbar.tsx — PURANA PURA CODE REPLACE KARO
-// Naya: Cart sidebar + checkout components/Cart.tsx me move ho gaya — Navbar sirf cart button dikhata hai
-// Baqi sab (mega menu, currency selector, search, mobile menu) pehle jaisa
+// components/Navbar.tsx
+// PURANA PURA CODE REPLACE KARO
+// Is version me: 1) dummy cats delete  2) emojis delete (strip + mega menu sirf clean text)
+// 3) main nav links dark (gray-900), category strip light (gray-400) — dono me shade farq
+// 4) strip pe halka bg shade  5) PKR/USD toggle me active ka clear farq
+// 6) Collections dropdown me SUB-CATEGORIES bhi (category heading dark + subs light, no emoji)
 
-"use client";
-
-import { useState, useEffect } from "react";
-import Head from "next/head";
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { client } from "../lib/sanity";
-import { slugify } from "../lib/site";
-import { Menu, X, MessageCircle, ShoppingCart, Search, Heart, ChevronDown, ArrowRight } from "lucide-react";
+import { Menu, X, Search, Heart, ShoppingCart, ChevronDown } from "lucide-react";
 import { useCart, useCurrency } from "../pages/_app";
-import { motion, AnimatePresence } from "framer-motion";
 import Cart from "./Cart";
 
-const WA = "923333010842";
-const LOGO_URL = "/logo.png";
-
-const dummyCats = [
-  { id: "d1", name: "Lawn", icon: "🌸", image: "https://images.unsplash.com/photo-1583391733956-6c78276477e2?q=80&w=600", active: true, subCategories: [] },
-  { id: "d2", name: "Chiffon", icon: "✨", image: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=600", active: true, subCategories: [] },
-  { id: "d3", name: "Silk", icon: "👗", image: "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=600", active: true, subCategories: [] },
-  { id: "d4", name: "Fragrance", icon: "🧴", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=600", active: true, subCategories: [] },
-];
+const ANNOUNCE =
+  '"In Karachi, delivery will be done within 1 to 2 days, and in other cities, it will be done within a week."  ·  Cash on Delivery Available  ·  Original Premium Fabrics  ·  24/7 WhatsApp Support';
 
 const NAV_CSS =
-  "body { font-family: 'DM Sans', sans-serif; } " +
-  ".font-display { font-family: 'Cormorant Garamond', serif; } " +
-  ".nav-link::after { content:''; display:block; height:1px; background:#1a1a1a; width:0; transition:width 0.3s; } " +
-  ".nav-link:hover::after { width:100%; } " +
+  "@keyframes mbsMarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } } " +
+  ".marquee-track { animation: mbsMarquee 22s linear infinite; } " +
+  ".nav-link::after { content: \"\"; display: block; height: 1px; background: #1a1a1a; width: 0; transition: width 0.3s; } " +
+  ".nav-link:hover::after { width: 100%; } " +
   ".nav-link-active { color: #1a1a1a !important; } " +
   ".nav-link-active::after { width: 100% !important; } " +
-  "@keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} } " +
-  ".marquee-track { animation: marquee 22s linear infinite; }";
+  ".no-bar { scrollbar-width: none; -ms-overflow-style: none; } " +
+  ".no-bar::-webkit-scrollbar { display: none; }";
+
+const CATS_GROQ =
+  '*[_type == "category" && active == true] | order(name asc) { _id, name, icon, active, "image": coalesce(image.asset->url, ""), "subCategories": *[_type == "subCategory" && parentCategory._ref == ^._id && active == true] | order(name asc) { _id, name, icon } }';
+
+const SEARCH_GROQ =
+  '*[_type == "product"] | order(_createdAt desc) { _id, title, price, "image": coalesce(image.asset->url, "") }';
+
+// URL safe slug: "Embroidered Lawn Suits" -> "embroidered-lawn-suits"
+// Category page isi tarah match karta hai (case aur spaces dono handle)
+function slugify(s: string): string {
+  const lowered = String(s || "").toLowerCase().replace(/-/g, " ");
+  let cleaned = "";
+  for (let i = 0; i < lowered.length; i++) {
+    const ch = lowered.charAt(i);
+    if ((ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === " ") {
+      cleaned += ch;
+    }
+  }
+  return cleaned.replace(/\s+/g, " ").trim().replace(/\s+/g, "-");
+}
 
 export default function Navbar() {
   const router = useRouter();
-  const [prods, setProds] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
-  const [menu, setMenu] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [megaOpen, setMegaOpen] = useState(false);
-  const { totalItems } = useCart();
-  const { currency, setCurrency, fmt } = useCurrency();
-  const [activeNav, setActiveNav] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const { totalItems } = useCart();
+  const { currency, setCurrency, fmt } = useCurrency();
 
+  // Real categories sirf Sanity se — koi dummy data nahi
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const productsQuery = '*[_type == "product"] | order(_createdAt desc) { _id, title, price, "category": category->name, "image": coalesce(image.asset->url, "") }';
-        const productsData = await client.fetch(productsQuery);
-        setProds(productsData.map((p: any) => ({ ...p, id: p._id })));
-
-        const catsQuery = '*[_type == "category" && active == true] | order(name asc) { _id, name, icon, active, "image": coalesce(image.asset->url, ""), "subCategories": *[_type == "subCategory" && parentCategory._ref == ^._id && active == true] | order(name asc) { _id, name, icon } }';
-        const catsData = await client.fetch(catsQuery);
-        setCats(catsData.map((c: any) => ({ ...c, id: c._id })));
-      } catch (error) {
-        console.error("Error fetching navbar data from Sanity:", error);
-      }
-    };
-
-    fetchData();
-
-    const handleScroll = () => {
-      const sections = ["home", "featured", "categories", "about"];
-      for (const id of sections.reverse()) {
-        const el = document.getElementById(id);
-        if (el && window.scrollY >= el.offsetTop - 100) { setActiveNav(id); break; }
-      }
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => { window.removeEventListener("scroll", handleScroll); };
+    client
+      .fetch(CATS_GROQ)
+      .then(function (d: any[]) {
+        setCats(d || []);
+      })
+      .catch(function () {});
   }, []);
 
-  const displayCats = cats.length > 0 ? cats : dummyCats;
+  // Search modal pehli dafa khulne pe products ek bar fetch
+  useEffect(() => {
+    if (!searchOpen || allProducts.length > 0) return;
+    client
+      .fetch(SEARCH_GROQ)
+      .then(function (d: any[]) {
+        setAllProducts(d || []);
+      })
+      .catch(function () {});
+  }, [searchOpen, allProducts.length]);
 
-  const searchResults = searchQuery.trim().length > 1
-    ? prods.filter(p =>
-        p.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.category?.toLowerCase().includes(searchQuery.toLowerCase())
-      ).slice(0, 8)
-    : [];
+  const query = searchQuery.trim().toLowerCase();
+  const results =
+    query === ""
+      ? []
+      : allProducts
+          .filter(function (p: any) {
+            return String(p.title || "").toLowerCase().indexOf(query) !== -1;
+          })
+          .slice(0, 8);
+
+  // /category/xyz pe ho to strip me wahi category highlight
+  const activeCat = slugify(
+    router.asPath.indexOf("/category/") === 0
+      ? (router.asPath.split("/")[2] || "").split("?")[0].split("#")[0]
+      : ""
+  );
+
+  // Main nav links — DARK shade (primary row)
+  const navMain =
+    "nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-900 hover:text-black transition-colors pb-0.5";
 
   return (
     <>
-      <Head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-        <style>{NAV_CSS}</style>
-      </Head>
+      <style dangerouslySetInnerHTML={{ __html: NAV_CSS }} />
 
-      {/* ━━━ ANNOUNCEMENT BAR ━━━ */}
+      {/* Announcement marquee bar */}
       <div className="bg-[#1a1a1a] text-white py-2.5 overflow-hidden">
         <div className="flex marquee-track whitespace-nowrap">
-          {[...Array(6)].map((_, i) => (
-            <span key={i} className="text-[11px] tracking-[0.18em] uppercase mx-10 opacity-80">
-              In Karachi, delivery will be done within 1 to 2 days, and in other cities, it will be done within a week. &nbsp;·&nbsp; Cash on Delivery Available &nbsp;·&nbsp; Original Premium Fabrics &nbsp;·&nbsp; 24/7 WhatsApp Support
-            </span>
-          ))}
+          {[0, 1, 2, 3, 4, 5].map(function (i: number) {
+            return (
+              <span
+                key={i}
+                className="text-[11px] tracking-[0.18em] uppercase mx-10 opacity-80"
+              >
+                {ANNOUNCE}
+              </span>
+            );
+          })}
         </div>
       </div>
 
-      {/* ━━━ NAVBAR (mega menu iske andar hai — mouse bahar gaya to band ho jata hai) ━━━ */}
-      <nav
-        className="sticky top-0 z-50 bg-white/98 backdrop-blur-xl border-b border-gray-100 relative"
-        onMouseLeave={() => setMegaOpen(false)}
-      >
+      <nav className="sticky top-0 z-50 bg-white backdrop-blur-xl border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-5 sm:px-8 flex items-center justify-between h-[68px]">
-          <button onClick={() => setMenu(true)} className="md:hidden w-9 h-9 flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors" aria-label="Open menu">
-            <Menu size={20} strokeWidth={1.5} />
-          </button>
-
-          <Link href="/" className="flex items-center">
-            <img src={LOGO_URL} alt="MultiBrand" className="h-34 w-auto" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              className="md:hidden w-9 h-9 flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors"
+              aria-label="Open menu"
+              onClick={function () {
+                setMobileOpen(true);
+              }}
+            >
+              <Menu size={20} strokeWidth={1.5} />
+            </button>
+            <Link href="/" className="flex items-center">
+              <img src="/logo.png" alt="MultiBrand" className="h-34 w-auto" />
+            </Link>
+          </div>
 
           <div className="hidden md:flex items-center gap-10">
-            {[
-              { label: "Home", href: "/#home", id: "home" },
-              { label: "New In", href: "/#featured", id: "featured" },
-            ].map(({ label, href, id }) => (
-              <Link key={id} href={href} className={"nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 " + (activeNav === id ? "nav-link-active" : "")}>
-                {label}
-              </Link>
-            ))}
+            <Link href="/" className={navMain}>
+              Home
+            </Link>
+            <Link href="/#featured" className={navMain}>
+              New In
+            </Link>
 
-            {/* COLLECTIONS — CLICK pe mega menu khulta hai (second navbar ki tarah) */}
-            <button
-              onClick={() => setMegaOpen(!megaOpen)}
-              className={"nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 flex items-center gap-1 " + (megaOpen ? "nav-link-active" : "")}
-            >
-              Collections
-              <ChevronDown size={12} strokeWidth={2} className={"transition-transform duration-300 " + (megaOpen ? "rotate-180" : "")} />
-            </button>
+            <div className="relative group">
+              <button className={navMain + " flex items-center gap-1"}>
+                Collections
+                <ChevronDown
+                  size={12}
+                  strokeWidth={2}
+                  className="transition-transform duration-300 group-hover:rotate-180"
+                />
+              </button>
+              {cats.length > 0 ? (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[760px] max-w-[92vw] bg-white border border-gray-100 shadow-xl shadow-gray-100/80 rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-5 px-6 origin-top scale-95 group-hover:scale-100">
+                  <div className="grid grid-cols-5 gap-x-6">
+                    {cats.map(function (c: any) {
+                      return (
+                        <div key={c._id} className="min-w-0">
+                          <Link
+                            href={"/category/" + slugify(String(c.name || ""))}
+                            className="block text-[11px] font-semibold tracking-[0.12em] uppercase text-gray-900 hover:text-black transition-colors pb-2 border-b border-gray-100"
+                          >
+                            {c.name}
+                          </Link>
+                          {c.subCategories && c.subCategories.length > 0 ? (
+                            <div className="mt-2.5 space-y-1.5">
+                              {c.subCategories.map(function (s: any) {
+                                return (
+                                  <Link
+                                    key={s._id}
+                                    href={
+                                      "/category/" +
+                                      slugify(String(s.name || ""))
+                                    }
+                                    className="block text-[12px] text-gray-400 hover:text-gray-800 transition-colors capitalize leading-snug"
+                                  >
+                                    {s.name}
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
-            <Link href="/#about" className={"nav-link text-[12px] font-medium tracking-[0.14em] uppercase text-gray-500 hover:text-gray-900 transition-colors pb-0.5 " + (activeNav === "about" ? "nav-link-active" : "")}>
+            <Link href="/#about" className={navMain}>
               About
             </Link>
           </div>
 
           <div className="flex items-center gap-1">
-            {/* CURRENCY SELECTOR — PKR / USD */}
-            <div className="hidden sm:flex items-center rounded-full border border-gray-200 overflow-hidden mr-1">
-              {(["PKR", "USD"] as const).map((cur) => (
-                <button
-                  key={cur}
-                  onClick={() => setCurrency(cur)}
-                  className={"px-2.5 py-1.5 text-[10px] font-semibold tracking-wider transition-colors " + (currency === cur ? "bg-[#1a1a1a] text-white" : "bg-white text-gray-500 hover:text-gray-900")}
-                >
-                  {cur}
-                </button>
-              ))}
+            {/* Currency toggle — active dark pill, inactive light: dono me clear farq */}
+            <div className="hidden sm:flex items-center gap-1 mr-1">
+              <button
+                onClick={function () {
+                  setCurrency("PKR");
+                }}
+                className={
+                  "px-2 py-1 rounded-full text-[10px] font-semibold tracking-[0.08em] transition-colors " +
+                  (currency === "PKR"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-400 hover:text-gray-800")
+                }
+              >
+                PKR
+              </button>
+              <button
+                onClick={function () {
+                  setCurrency("USD");
+                }}
+                className={
+                  "px-2 py-1 rounded-full text-[10px] font-semibold tracking-[0.08em] transition-colors " +
+                  (currency === "USD"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-400 hover:text-gray-800")
+                }
+              >
+                USD
+              </button>
             </div>
 
-            <button onClick={() => setSearchOpen(true)} className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Search">
+            <button
+              className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors"
+              aria-label="Search"
+              onClick={function () {
+                setSearchOpen(true);
+              }}
+            >
               <Search size={18} strokeWidth={1.5} />
             </button>
-            <button className="hidden sm:flex w-9 h-9 items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Wishlist">
+
+            <button
+              className="hidden sm:flex w-9 h-9 items-center justify-center text-gray-500 hover:text-gray-900 transition-colors"
+              aria-label="Wishlist"
+            >
               <Heart size={18} strokeWidth={1.5} />
             </button>
 
-            <button onClick={() => setCartOpen(true)} className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors" aria-label="Cart">
+            <button
+              className="relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors"
+              aria-label="Cart"
+              onClick={function () {
+                setCartOpen(true);
+              }}
+            >
               <ShoppingCart size={18} strokeWidth={1.5} />
-              <AnimatePresence>
-                {totalItems > 0 && (
-                  <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
-                    className="absolute -top-0.5 -right-0.5 w-[18px] h-[18px] bg-[#1a1a1a] text-white text-[9px] font-semibold rounded-full flex items-center justify-center">
-                    {totalItems}
-                  </motion.span>
-                )}
-              </AnimatePresence>
+              {totalItems ? (
+                <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-[#1a1a1a] text-white text-[9px] font-semibold flex items-center justify-center">
+                  {totalItems}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
 
-        {/* ━━━ MEGA MENU — second navbar (categories + sub-categories) ━━━ */}
-        {megaOpen && (
-          <div className="hidden md:block absolute top-full left-0 w-full bg-white border-b border-gray-100 shadow-xl shadow-gray-100/80 z-50">
-            <div className="max-w-7xl mx-auto px-5 sm:px-8 py-7">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-7">
-                {displayCats.map((c: any) => (
-                  <div key={c.id}>
+        {/* ━━━ CATEGORY STRIP — halka bg shade + LIGHT text (main nav se farq) ━━━ */}
+        {cats.length > 0 ? (
+          <div className="bg-[#FAFAF9] border-t border-gray-100">
+            <div className="max-w-7xl mx-auto px-5 sm:px-8">
+              <div className="no-bar flex items-center gap-7 h-[42px] overflow-x-auto whitespace-nowrap md:justify-center">
+                {cats.map(function (c: any) {
+                  return (
                     <Link
-                      href={"/category/" + slugify(c.name)}
-                      onClick={() => setMegaOpen(false)}
-                      className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-gray-900 hover:text-rose-600 transition-colors"
+                      key={c._id}
+                      href={"/category/" + slugify(String(c.name || ""))}
+                      className={
+                        "nav-link flex-shrink-0 text-[11.5px] font-medium tracking-[0.14em] uppercase text-gray-400 hover:text-gray-800 transition-colors " +
+                        (activeCat === slugify(String(c.name || ""))
+                          ? "nav-link-active"
+                          : "")
+                      }
                     >
-                      <span className="text-base">{c.icon}</span>
-                      <span className="capitalize">{c.name}</span>
+                      {c.name}
                     </Link>
-                    {c.subCategories && c.subCategories.length > 0 && (
-                      <div className="mt-2.5 ml-7 space-y-1.5">
-                        {c.subCategories.map((sc: any) => (
-                          <Link
-                            key={sc._id}
-                            href={"/category/" + slugify(c.name) + "/" + slugify(sc.name)}
-                            onClick={() => setMegaOpen(false)}
-                            className="block text-[12.5px] text-gray-500 hover:text-rose-600 capitalize transition-colors"
-                          >
-                            {sc.name}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </nav>
 
       {/* ━━━ SEARCH MODAL ━━━ */}
-      <AnimatePresence>
-        {searchOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-start justify-center pt-20 px-4" onClick={() => { setSearchOpen(false); setSearchQuery(""); }}>
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-            <motion.div initial={{ y: -30, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: -30, opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-
-              <div className="flex items-center border-b border-gray-100 px-5">
-                <Search size={18} className="text-gray-400" strokeWidth={1.5} />
-                <input autoFocus value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search for dresses, categories..." className="w-full px-4 py-5 text-gray-900 bg-transparent focus:outline-none text-[15px]" />
-                <button onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="text-gray-400 hover:text-gray-700"><X size={18} strokeWidth={1.5} /></button>
-              </div>
-
-              {searchQuery.length > 1 && (
-                <div className="max-h-[60vh] overflow-y-auto p-2">
-                  {searchResults.length === 0 ? (
-                    <p className="p-6 text-center text-gray-400 text-sm">No products found for "<span className="text-gray-700 font-medium">{searchQuery}</span>"</p>
-                  ) : (
-                    searchResults.map(p => (
-                      <Link key={p.id} href={"/product/" + p.id} onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors">
-                        <div className="w-12 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                          <img src={p.image} alt="" className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium text-gray-900 truncate">{p.title}</h4>
-                          <p className="text-xs text-gray-500 capitalize mt-0.5">{p.category} · {fmt(Number(p.price))}</p>
-                        </div>
-                        <ArrowRight size={14} className="text-gray-300" />
-                      </Link>
-                    ))
-                  )}
-                </div>
+      {searchOpen ? (
+        <div
+          className="fixed inset-0 z-[70] bg-black/40"
+          onClick={function () {
+            setSearchOpen(false);
+          }}
+        >
+          <div
+            className="max-w-2xl mx-auto mt-20 bg-white rounded-xl shadow-2xl overflow-hidden"
+            onClick={function (e: any) {
+              e.stopPropagation();
+            }}
+          >
+            <div className="flex items-center gap-3 px-5 border-b border-gray-100">
+              <Search size={18} strokeWidth={1.5} className="text-gray-400" />
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={function (e: any) {
+                  setSearchQuery(e.target.value);
+                }}
+                placeholder="Search Lawn, Chiffon, Silk, Fragrance..."
+                className="flex-1 py-4 text-[14px] text-gray-900 placeholder-gray-400 outline-none"
+              />
+              <button
+                onClick={function () {
+                  setSearchOpen(false);
+                }}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 transition-colors"
+                aria-label="Close search"
+              >
+                <X size={18} strokeWidth={1.5} />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {query === "" ? (
+                <p className="px-5 py-8 text-center text-[13px] text-gray-400">
+                  Type to search products
+                </p>
+              ) : results.length === 0 ? (
+                <p className="px-5 py-8 text-center text-[13px] text-gray-400">
+                  {allProducts.length === 0
+                    ? "Loading products..."
+                    : "No products found"}
+                </p>
+              ) : (
+                results.map(function (p: any) {
+                  return (
+                    <Link
+                      key={p._id}
+                      href={"/product/" + p._id}
+                      onClick={function () {
+                        setSearchOpen(false);
+                      }}
+                      className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50"
+                    >
+                      {p.image ? (
+                        <img
+                          src={String(p.image)}
+                          alt={String(p.title || "")}
+                          className="w-12 h-12 object-cover rounded bg-gray-100"
+                        />
+                      ) : (
+                        <span className="w-12 h-12 rounded bg-gray-100 block" />
+                      )}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[13.5px] font-medium text-gray-900 truncate">
+                          {p.title}
+                        </span>
+                        <span className="block text-[12px] text-gray-400 mt-0.5">
+                          {fmt(Number(p.price || 0))}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })
               )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ━━━ MOBILE MENU ━━━ */}
-      <AnimatePresence>
-        {menu && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex" onClick={() => setMenu(false)}>
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "tween", duration: 0.3 }}
-              className="relative w-[300px] bg-white h-full shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-5 border-b border-gray-100">
-                <img src={LOGO_URL} alt="MultiBrand" className="h-8" />
-                <button onClick={() => setMenu(false)} className="text-gray-400 hover:text-gray-700"><X size={18} strokeWidth={1.5} /></button>
-              </div>
-              <nav className="p-6 space-y-1 flex-1 overflow-y-auto">
-                <button onClick={() => { setMenu(false); setSearchOpen(true); }} className="flex items-center gap-3 py-3 text-[15px] font-medium text-gray-800 border-b border-gray-50 hover:text-rose-600 transition-colors w-full text-left">
-                  <Search size={16} strokeWidth={1.5} /> Search
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-[60] md:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={function () {
+              setMobileOpen(false);
+            }}
+          />
+          <div className="absolute top-0 left-0 bottom-0 w-[290px] bg-white shadow-2xl overflow-y-auto">
+            <div className="flex items-center justify-between px-5 h-[68px] border-b border-gray-100">
+              <img src="/logo.png" alt="MultiBrand" className="h-8 w-auto" />
+              <button
+                onClick={function () {
+                  setMobileOpen(false);
+                }}
+                className="w-9 h-9 flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors"
+                aria-label="Close menu"
+              >
+                <X size={20} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <div className="px-5 py-5">
+              <Link
+                href="/"
+                onClick={function () {
+                  setMobileOpen(false);
+                }}
+                className="block py-3 text-[13px] font-medium tracking-[0.14em] uppercase text-gray-900 border-b border-gray-50"
+              >
+                Home
+              </Link>
+              <Link
+                href="/#featured"
+                onClick={function () {
+                  setMobileOpen(false);
+                }}
+                className="block py-3 text-[13px] font-medium tracking-[0.14em] uppercase text-gray-900 border-b border-gray-50"
+              >
+                New In
+              </Link>
+              <Link
+                href="/#about"
+                onClick={function () {
+                  setMobileOpen(false);
+                }}
+                className="block py-3 text-[13px] font-medium tracking-[0.14em] uppercase text-gray-900 border-b border-gray-50"
+              >
+                About
+              </Link>
+
+              {cats.length > 0 ? (
+                <>
+                  <p className="mt-6 mb-1 text-[10px] font-medium tracking-[0.2em] uppercase text-gray-400">
+                    Collections
+                  </p>
+                  {cats.map(function (c: any) {
+                    return (
+                      <div key={c._id} className="border-b border-gray-50">
+                        <Link
+                          href={"/category/" + slugify(String(c.name || ""))}
+                          onClick={function () {
+                            setMobileOpen(false);
+                          }}
+                          className="block py-2.5 text-[12.5px] font-medium text-gray-400 hover:text-gray-800 transition-colors capitalize"
+                        >
+                          {c.name}
+                        </Link>
+                        {c.subCategories && c.subCategories.length > 0 ? (
+                          <div className="ml-0.5 pl-3 pb-2 space-y-0.5 border-l-2 border-gray-100">
+                            {c.subCategories.map(function (s: any) {
+                              return (
+                                <Link
+                                  key={s._id}
+                                  href={
+                                    "/category/" +
+                                    slugify(String(s.name || ""))
+                                  }
+                                  onClick={function () {
+                                    setMobileOpen(false);
+                                  }}
+                                  className="block py-1 text-[12px] text-gray-400 hover:text-gray-800 transition-colors capitalize"
+                                >
+                                  {s.name}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </>
+              ) : null}
+
+              <p className="mt-6 mb-2 text-[10px] font-medium tracking-[0.2em] uppercase text-gray-400">
+                Currency
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={function () {
+                    setCurrency("PKR");
+                  }}
+                  className={
+                    "px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-[0.08em] transition-colors " +
+                    (currency === "PKR"
+                      ? "bg-gray-900 text-white"
+                      : "text-gray-400 hover:text-gray-800")
+                  }
+                >
+                  PKR
                 </button>
-                {[{ label: "Home", href: "/#home" }, { label: "New In", href: "/#featured" }, { label: "About", href: "/#about" }].map(({ label, href }) => (
-                  <Link key={label} href={href} onClick={() => setMenu(false)} className="block py-3 text-[15px] font-medium text-gray-800 border-b border-gray-50 hover:text-rose-600 transition-colors">{label}</Link>
-                ))}
-
-                {/* MOBILE CURRENCY SELECTOR */}
-                <div className="pt-4">
-                  <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-gray-400 mb-2">Currency</p>
-                  <div className="flex gap-2">
-                    {(["PKR", "USD"] as const).map((cur) => (
-                      <button
-                        key={cur}
-                        onClick={() => setCurrency(cur)}
-                        className={"flex-1 py-2.5 rounded-lg text-[12px] font-medium border transition-all " + (currency === cur ? "bg-[#1a1a1a] text-white border-[#1a1a1a]" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300")}
-                      >
-                        {cur === "PKR" ? "PKR Rs" : "USD $"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* MOBILE MENU COLLECTIONS WITH SUB-CATEGORIES */}
-                <div className="pt-4">
-                  <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-gray-400 mb-3">Collections</p>
-                  {displayCats.map((c: any) => (
-                    <div key={c.id}>
-                      <Link href={"/category/" + slugify(c.name)} onClick={() => setMenu(false)} className="flex items-center gap-3 py-2 text-[14px] font-medium text-gray-800 hover:text-rose-600 transition-colors">
-                        <span>{c.icon}</span> {c.name}
-                      </Link>
-                      {c.subCategories && c.subCategories.length > 0 && (
-                        <div className="pl-8 pb-1">
-                          {c.subCategories.map((sc: any) => (
-                            <Link key={sc._id} href={"/category/" + slugify(c.name) + "/" + slugify(sc.name)} onClick={() => setMenu(false)} className="block py-1 text-[12px] text-gray-500 hover:text-rose-600 capitalize transition-colors">
-                              {sc.name}
-                            </Link>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </nav>
-              <div className="p-5 border-t border-gray-100">
-                <a href={"https://wa.me/" + WA} target="_blank" className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                  <MessageCircle size={16} /> WhatsApp Support
-                </a>
+                <button
+                  onClick={function () {
+                    setCurrency("USD");
+                  }}
+                  className={
+                    "px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-[0.08em] transition-colors " +
+                    (currency === "USD"
+                      ? "bg-gray-900 text-white"
+                      : "text-gray-400 hover:text-gray-800")
+                  }
+                >
+                  USD
+                </button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-      {/* ━━━ CART (components/Cart.tsx — sidebar + checkout + delivery charges sab usme) ━━━ */}
-      <Cart open={cartOpen} onClose={() => setCartOpen(false)} />
+      <Cart
+        open={cartOpen}
+        onClose={function () {
+          setCartOpen(false);
+        }}
+      />
     </>
   );
 }

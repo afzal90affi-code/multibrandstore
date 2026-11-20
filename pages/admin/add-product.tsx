@@ -1,4 +1,24 @@
 // FILE: pages/admin/add-product.tsx  (PURANA PURA CODE REPLACE KARO)
+//
+// NAYA: SEO — GOOGLE PREVIEW BOX (Common details me, Highlights ke neechy):
+//   - Live Google snippet: title + URL + description — ProductSEO component ka
+//     EXACT format (brand prefix, "| MultiBrand", "Price: PKR..." append,
+//     160-char cut) — jo Google me ACTUALLY dikhega wohi yahan dikhta hai
+//   - Title counter: 60 chars se lamba ho to RED warning (Google aakhri hissa
+//     kaat deta hai)
+//   - Description counter: khali / bohat chhoti / perfect / lambi — color hints
+//     (40 chars se chhoti ho to product page apna auto text use karta hai)
+//   - "SEO description auto-fill" button: title + brand + material + highlights
+//     se 2-3 line ki proper SEO description bana kar Description box me daal
+//     deta hai (baad me khud edit kar sakte ho)
+//   - WhatsApp share preview: ProductSEO ke og tags ka result — customer link
+//     share kare to WhatsApp/Facebook pe photo + title + description aisi dikhegi
+//   - NOTE: koi naya Sanity field NAHI add hua — API payload bilkul same hai,
+//     save fail ka risk zero. Description hi SEO meta description hai.
+//
+// Baqi sab waise hi: catalog + designs system, bulk photos, per-design sizes,
+// Photo 2/3, progress bar, fail rows retry — kuch nahi chhera gaya.
+
 import type { ChangeEvent, CSSProperties } from "react";
 import { useEffect, useState } from "react";
 
@@ -259,6 +279,22 @@ export default function AddCatalogProduct() {
     setDesigns((prev) => prev.map((r) => ({ ...r, sizes: sizes })));
   }
 
+  // ━━━ NAYA: SEO description auto-fill ━━━
+  // Title + brand + material + highlights se 2-3 line ki proper SEO
+  // description banata hai (ProductSEO component isi Description field ko
+  // meta description ke tor pe Google ko bhejta hai).
+  function autoFillSeoDescription() {
+    if (!title.trim()) { alert("Pehle Catalog Title likho — description usi se banti hai"); return; }
+    if (description.trim().length > 0 && !confirm("Description pehle se likhi hui hai — auto-fill se REPLACE kar doon?")) return;
+    const s: string[] = [];
+    s.push(title.trim() + (brand.trim() ? " by " + brand.trim() : "") + ".");
+    if (material.trim()) s.push("Fabric: " + material.trim() + ".");
+    const hl = highlights.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 3);
+    if (hl.length) s.push(hl.join(", ") + ".");
+    s.push("Original branded suit with Cash on Delivery across Pakistan.");
+    setDescription(s.join(" "));
+  }
+
   async function handleSubmit() {
     if (saving) return;
     if (!title.trim()) { alert("Catalog title likho"); return; }
@@ -333,7 +369,54 @@ export default function AddCatalogProduct() {
   const rowsCount = designs.filter((d) => d.image).length;
   const firstRow = designs.filter((d) => d.image)[0];
   const firstSuffix = firstRow ? (firstRow.name.trim() || "Design 1") : "Design 1";
-  const googleTitle = title.trim() ? title.trim() + " - " + firstSuffix + " | MultiBrand" : "";
+
+  // ━━━ NAYA: SEO PREVIEW COMPUTATION ━━━
+  // ProductSEO component (components/ProductSEO.tsx) ka EXACT mirror — jo
+  // Google me actually dikhega wohi yahan preview me aata hai:
+  //   Title = {brand} {Catalog Title} - {Design 1} | MultiBrand
+  //     (brand title me already ho to dobara nahi lagta)
+  //   Description = Description field, chhoti (40-) ho to auto text, phir
+  //     "Price: PKR X." append (agar 158 ke andar fit ho), 160 pe cut
+  const selectedCat = cats.find((c) => c._id === category);
+  const selectedCatName = selectedCat ? selectedCat.name : "";
+
+  const seoTitlePreview = ((): string => {
+    if (!title.trim()) return "";
+    const full = title.trim() + " - " + firstSuffix;
+    const b = brand.trim();
+    const bIn = b ? full.toLowerCase().indexOf(b.toLowerCase()) !== -1 : false;
+    return (b && !bIn ? b + " " : "") + full + " | MultiBrand";
+  })();
+  const seoTitleLen = seoTitlePreview.length;
+
+  const seoDescPreview = ((): string => {
+    if (!title.trim()) return "";
+    const fullTitle = title.trim() + " - " + firstSuffix;
+    const raw = description.replace(/\s+/g, " ").trim();
+    let d = raw;
+    if (d.length < 40) {
+      d = fullTitle + " - " + (selectedCatName || "MultiBrand") + " ka original branded design. All Pakistan delivery, easy returns.";
+    }
+    const p = Number(price);
+    if (p > 0 && d.length + 30 <= 158) {
+      d = d + " Price: PKR " + p.toLocaleString("en-US") + ".";
+    }
+    if (d.length > 160) {
+      d = d.slice(0, 157) + "...";
+    }
+    return d;
+  })();
+
+  const descLen = description.replace(/\s+/g, " ").trim().length;
+  const descStatusColor = descLen === 0 ? "#c00" : descLen < 40 ? "#c77700" : descLen <= 140 ? "#0a7a0a" : "#c77700";
+  const descStatusHint =
+    descLen === 0
+      ? "khali hai — auto-fill dabao ya 2-3 lines likho (40+ chars zaroori hain, warna Google auto text dikhayega)"
+      : descLen < 40
+        ? "bohat chhoti hai — kam az kam 40 chars chahiye warna Google auto text dikhayega"
+        : descLen <= 140
+          ? "perfect range — Price ke saath bhi 160 ke andar fit ho jayegi"
+          : "thori lambi hai — Price append hone ke baad 160+ ho sakti hai, Google aakhri hissa kaat dega";
 
   return (
     <div style={{ maxWidth: 780, margin: "0 auto", padding: 20 }}>
@@ -348,11 +431,6 @@ export default function AddCatalogProduct() {
 
         <label style={labelStyle}>Catalog Title *</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Misal: 3 Piece Printed Lawn Suit Summer" style={inputStyle} />
-        {googleTitle ? (
-          <p style={{ color: "#666", fontSize: 13, margin: "6px 0 0" }}>
-            Google me pehla product aise dikhega: <b>{googleTitle}</b>
-          </p>
-        ) : null}
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 130px" }}>
@@ -403,6 +481,68 @@ export default function AddCatalogProduct() {
 
         <label style={labelStyle}>Highlights (optional — har line ek point)</label>
         <textarea value={highlights} onChange={(e) => setHighlights(e.target.value)} rows={3} placeholder={"Premium printed lawn\nShirt + dupatta"} style={inputStyle} />
+
+        {/* ===== SEO: GOOGLE PREVIEW (live) ===== */}
+        <div style={{ border: "1px solid #e7bfd4", borderRadius: 8, padding: 14, marginTop: 16, background: "#fffafc" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <h2 style={{ fontSize: 16, margin: 0 }}>SEO — Google preview (live)</h2>
+            <button type="button" onClick={autoFillSeoDescription} style={{ ...ghostBtn, padding: "7px 12px", fontSize: 12 }}>
+              SEO description auto-fill
+            </button>
+          </div>
+          <p style={{ color: "#888", fontSize: 12, margin: "4px 0 10px" }}>
+            Yehi cheez Google search me dikhegi (ProductSEO component ka exact format). Title 60 chars ke andar aur description 40-140 chars me rakho — best result.
+          </p>
+
+          {/* Google-style snippet — title / URL / description */}
+          <div style={{ border: "1px solid #eee", borderRadius: 8, padding: "12px 14px", background: "#fff", maxWidth: 580 }}>
+            <div style={{ color: seoTitleLen > 60 ? "#c00" : "#1a0dab", fontSize: 17, lineHeight: 1.3, overflowWrap: "break-word" }}>
+              {seoTitlePreview || "Catalog title likho — yahan Google me aisa title dikhega"}
+            </div>
+            <div style={{ color: "#0d6629", fontSize: 13, margin: "2px 0", fontWeight: 500 }}>
+              multibrandstore.vercel.app › product
+            </div>
+            <div style={{ color: "#4d5156", fontSize: 13, lineHeight: 1.45 }}>
+              {seoDescPreview || "Description likho ya auto-fill dabao — yahan Google me description dikhegi (40 chars se chhoti ho to product page apna auto text use karega)"}
+            </div>
+          </div>
+
+          {/* Counters + hints */}
+          <p style={{ fontSize: 12, margin: "10px 0 0", color: seoTitleLen > 60 ? "#c00" : "#0a7a0a" }}>
+            <b>Google title: {seoTitleLen}/60 chars</b>
+            {seoTitleLen > 60 ? " — lamba hai, Google aakhri hissa kaat dega. Title chhota karo." : seoTitleLen > 0 ? " — theek hai" : ""}
+          </p>
+          <p style={{ fontSize: 12, margin: "4px 0 0", color: descStatusColor }}>
+            <b>Meta description: {descLen} chars</b> — {descStatusHint}
+          </p>
+
+          {/* WhatsApp / Facebook share preview — ProductSEO ke og tags ka result */}
+          <div style={{ border: "1px solid #e0e0e0", borderRadius: 10, overflow: "hidden", maxWidth: 420, marginTop: 12, background: "#fff" }}>
+            <p style={{ fontSize: 11, color: "#999", margin: "8px 12px" }}>
+              WhatsApp / Facebook share preview — product link share hone par aisa dikhega:
+            </p>
+            {firstRow && firstRow.image ? (
+              <img
+                src={firstRow.image.url}
+                alt="Share preview"
+                style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }}
+              />
+            ) : (
+              <div style={{ height: 110, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#999", fontSize: 13 }}>
+                Photo 1 upload karo — wohi photo share preview me aayegi
+              </div>
+            )}
+            <div style={{ background: "#f4f4f4", padding: "10px 12px" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#111", overflowWrap: "break-word" }}>
+                {seoTitlePreview || "Product title yahan dikhega"}
+              </div>
+              <div style={{ fontSize: 12, color: "#555", marginTop: 2, overflowWrap: "break-word" }}>
+                {seoDescPreview || "Description yahan dikhegi"}
+              </div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>multibrandstore.vercel.app</div>
+            </div>
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: 24, marginTop: 14, flexWrap: "wrap" }}>
           <label style={{ fontSize: 14 }}>

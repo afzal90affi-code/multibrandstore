@@ -26,7 +26,7 @@ export default function ManageProducts() {
   // ✅ Sanity se Products Fetch Karna (GROQ Query)
   useEffect(() => {
     if (!authorized) return;
-    
+
     const fetchProducts = async () => {
       try {
         const query = `*[_type == "product"] | order(_createdAt desc) {
